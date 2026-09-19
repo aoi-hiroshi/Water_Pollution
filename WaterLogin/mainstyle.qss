@@ -1,0 +1,173 @@
+QMainWindow, #centralWidgetRoot, #mainArea {
+    background: #f4f6fb;
+    font-family: "Microsoft YaHei";
+    color: #2c3e50;
+    font-size: 14px;
+}
+
+#leftNav {
+    background: #e6e8f0;
+    border-right: 1px solid #d1d8e6;
+}
+
+#logoLabel {
+    background: qlineargradient(
+        x1:0, y1:0, x2:1, y2:1,
+        stop:0 #2f80ed,
+        stop:1 #56ccf2
+    );
+    color: white;
+    font-size: 18px;
+    font-weight: bold;
+    border-radius: 24px;
+}
+
+QPushButton#navButton {
+    background: transparent;
+    border: none;
+    border-radius: 14px;
+    color: #4e5f79;
+    font-size: 15px;
+    font-weight: 600;
+    text-align: center;
+}
+
+QPushButton#navButton:hover {
+    background: rgba(47, 128, 237, 0.10);
+    color: #2f80ed;
+}
+
+QPushButton#navButton:checked {
+    background: #2f80ed;
+    color: white;
+    font-weight: bold;
+}
+
+#topBar {
+    background: #f2f4f9;
+    border-bottom: 1px solid #d8dfec;
+}
+
+#titleLabel {
+    background: transparent;
+    font-size: 22px;
+    font-weight: bold;
+    color: #25344d;
+}
+
+#subInfoLabel {
+    background: transparent;
+    color: #6c7b93;
+    font-size: 13px;
+}
+
+#statusLabel {
+    background: white;
+    color: #5a6880;
+    font-size: 13px;
+    border: 1px solid #d2d9e8;
+    border-radius: 14px;
+    padding-left: 12px;
+    padding-right: 12px;
+}
+
+#displayCard {
+    background: white;
+    border: 1px solid #d7deeb;
+    border-radius: 16px;
+}
+
+#noticeBar {
+    background: #f9fbff;
+    border-bottom: 1px solid #e6ebf4;
+    border-top-left-radius: 16px;
+    border-top-right-radius: 16px;
+}
+
+#noticeLabel {
+    background: transparent;
+    color: #5f708b;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+#mapArea {
+    background: qlineargradient(
+        x1:0, y1:0, x2:0, y2:1,
+        stop:0 #f8fafc,
+        stop:1 #eceff5
+    );
+    border-bottom-left-radius: 16px;
+    border-bottom-right-radius: 16px;
+}
+
+#mapPlaceholder {
+    background: transparent;
+    color: #6a7891;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+#infoCard {
+    background: white;
+    border: 1px solid #d7deeb;
+    border-radius: 14px;
+}
+
+#cardTitle {
+    background: transparent;
+    font-size: 16px;
+    font-weight: bold;
+    color: #273752;
+}
+
+#cardSubText {
+    background: transparent;
+    color: #586984;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+#cardText {
+    background: transparent;
+    color: #3f4d63;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+QProgressBar#taskProgress {
+    background: #e8edf6;
+    border: none;
+    border-radius: 5px;
+}
+
+QProgressBar#taskProgress::chunk {
+    background: #2f80ed;
+    border-radius: 5px;
+}
+
+QPushButton#primaryButton {
+    background: #2f80ed;
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+QPushButton#primaryButton:hover {
+    background: #1e6fe0;
+}
+
+QPushButton#secondaryButton {
+    background: #eef3ff;
+    color: #2f80ed;
+    border: 1px solid #c8d6f6;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: bold;
+}
+
+QPushButton#secondaryButton:hover {
+    background: #e3ecff;
+}

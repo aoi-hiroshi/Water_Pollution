@@ -1,0 +1,60 @@
+{
+  "name": "attention_lstm_h10",
+  "version": "1.0",
+  "contract": "water.forecast.raw.v1",
+  "source_notebook": "预测任务2 - 副本/prediction_test.ipynb (cells 9-11, 13)",
+  "checkpoint": "best_model_four_head_h10_diff.pth",
+  "checkpoint_sha256": "b3ced98965e16cfa96780037d69584fdce4c139b140dc5bc73edac8e18b3f6ae",
+  "scaler_y_sha256": "72c40286726a3beaba513e37d24f27df39045d35ef6c9ce13df77ccc396235ad",
+  "scaler_aux_sha256": "3b2d01da3405e2adc00271a25cb3c357c337036abf9ab0af7ec90cf78321e051",
+  "model_sha256": "f38064278c808883c1de961def70f42b3a5b40664cc259ef4f8812e4b685a609",
+  "lookback": 120,
+  "horizon": 10,
+  "torch_version": "2.5.1+cu121",
+  "onnx_version": "1.17.0",
+  "onnxruntime_version": "1.20.1",
+  "sklearn_version": "1.6.1",
+  "opset": 17,
+  "input_shape": [
+    1,
+    120,
+    10
+  ],
+  "output_shape": [
+    1,
+    10,
+    4
+  ],
+  "input_features": [
+    "cod",
+    "nh3n",
+    "tp",
+    "turbidity",
+    "temperature",
+    "ph",
+    "water_level",
+    "orp",
+    "conductivity",
+    "dissolved_oxygen"
+  ],
+  "targets": [
+    "cod",
+    "nh3n",
+    "tp",
+    "turbidity"
+  ],
+  "input": "cleaned physical measurements",
+  "output": "physical measurements",
+  "sampling_interval_seconds": null,
+  "verified_window_indices": [
+    0,
+    120,
+    9179
+  ],
+  "max_absolute_errors": [
+    9.5367431640625e-07,
+    0.0,
+    0.0
+  ],
+  "saved_predictions_checked": true
+}

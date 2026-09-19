@@ -1,0 +1,91 @@
+QWidget {
+    background:qlineargradient(
+        spread:pad, x1:0, y1:0, x2:1, y2:1,
+        stop:0 #89f7fe,
+        stop:0.5 #66a6ff,
+        stop:1 #43cea2
+    );
+    font-family: "Microsoft YaHei";
+}
+
+#cardFrame {
+    background: rgba(255, 255, 255, 0.93);
+    border-radius: 24px;
+    border: 2px solid rgba(255, 255, 255, 0.7);
+}
+
+#titleLabel {
+    background: transparent;
+    color: #0f4c75;
+    font-size: 28px;
+    font-weight: bold;
+}
+
+#subTitleLabel {
+    background: transparent;
+    color: #5f6f81;
+    font-size: 14px;
+}
+
+#iconLabel {
+    background: transparent;
+    color: #1b6ca8;
+    font-size: 20px;
+    font-weight: bold;
+}
+
+QLineEdit {
+    background: white;
+    border: 2px solid #d6e6f2;
+    border-radius: 12px;
+    padding: 10px 12px;
+    font-size: 15px;
+    color: #1f2d3d;
+    min-height: 22px;
+}
+
+QLineEdit:focus {
+    border: 2px solid #4facfe;
+    background: #fafdff;
+}
+
+QPushButton {
+    background: qlineargradient(
+        spread:pad, x1:0, y1:0, x2:1, y2:0,
+        stop:0 #36d1dc,
+        stop:1 #5b86e5
+    );
+    color: white;
+    border: none;
+    border-radius: 12px;
+    font-size: 16px;
+    font-weight: bold;
+    min-height: 42px;
+}
+
+QPushButton:hover {
+    background: qlineargradient(
+        spread:pad, x1:0, y1:0, x2:1, y2:0,
+        stop:0 #43cea2,
+        stop:1 #185a9d
+    );
+}
+
+QPushButton:pressed {
+    padding-left: 2px;
+    padding-top: 2px;
+}
+
+#exitBtn {
+    background: #9aa5b1;
+}
+
+#exitBtn:hover {
+    background: #7b8794;
+}
+
+#tipLabel {
+    background: transparent;
+    color: #6c7a89;
+    font-size: 13px;
+}

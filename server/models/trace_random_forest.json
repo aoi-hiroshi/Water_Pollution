@@ -1,0 +1,61 @@
+{
+  "model_name": "random_forest",
+  "model_version": "1.0",
+  "source": "分类任务/classification.ipynb",
+  "sklearn_version": "1.6.1",
+  "sha256": "16c319055cbdc3128604972715f8c610c287140ab5ad6b91df0a97a97c7e2686",
+  "input_name": "features",
+  "input_shape": [
+    null,
+    10
+  ],
+  "training_features": [
+    "水温(℃)",
+    "pH值(无量纲)",
+    "化学需氧量(mg/l)",
+    "氨氮(mg/l)",
+    "总磷(mg/l)",
+    "液位(无)",
+    "ORP(无)",
+    "电导率(μs/cm)",
+    "溶解氧(mg/l)",
+    "浊度(无)"
+  ],
+  "api_features": [
+    "temperature",
+    "ph",
+    "cod",
+    "nh3n",
+    "tp",
+    "water_level",
+    "orp",
+    "conductivity",
+    "dissolved_oxygen",
+    "turbidity"
+  ],
+  "model_classes": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "business_labels": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+  ],
+  "label_offset": 1,
+  "preprocessing": "StandardScaler embedded in ONNX graph",
+  "precision_contract": "float32 physical inputs; fitted float64 scaler constants; round after Sub and Div",
+  "validation": {
+    "sample_count": 128,
+    "max_probability_error": 6.556510925292969e-07,
+    "rtol": 1e-05,
+    "atol": 1e-06
+  }
+}

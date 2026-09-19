@@ -1,0 +1,908 @@
+#include "datapage.h"
+
+#include "dataservice.h"
+#include "classificationcharts.h"
+
+#include <QAbstractItemView>
+#include <QColor>
+#include <QComboBox>
+#include <QFrame>
+#include <QFileDialog>
+#include <QSpinBox>
+#include <QDoubleSpinBox>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QGridLayout>
+#include <QHeaderView>
+#include <QHBoxLayout>
+#include <QJsonArray>
+#include <QJsonObject>
+#include <QLabel>
+#include <QMessageBox>
+#include <QPainter>
+#include <QPainterPath>
+#include <QPen>
+#include <QPixmap>
+#include <QPushButton>
+#include <QResizeEvent>
+#include <QScrollArea>
+#include <QStackedWidget>
+#include <QStringList>
+#include <QTableWidget>
+#include <QTableWidgetItem>
+#include <QVBoxLayout>
+#include <QVector>
+
+#include <algorithm>
+#include <climits>
+#include <initializer_list>
+
+namespace {
+QFrame *createInfoCardFrame()
+{
+    QFrame *card = new QFrame;
+    card->setObjectName("infoCard");
+    return card;
+}
+}
+
+DataPage::DataPage(QWidget *parent)
+    : QWidget(parent)
+    , dataService(new DataService(this))
+    , companyComboBox(nullptr)
+    , datasetComboBox(nullptr)
+    , taskModeComboBox(nullptr)
+    , distributionTypeComboBox(nullptr)
+    , distributionFeatureComboBox(nullptr)
+    , correlationMethodComboBox(nullptr)
+    , sequenceFeatureComboBox(nullptr)
+    , sequenceWindowComboBox(nullptr)
+    , forecastFeatureComboBox(nullptr)
+    , forecastStepComboBox(nullptr)
+    , forecastCheckComboBox(nullptr)
+    , previewTable(nullptr)
+    , modeDescriptionLabel(nullptr)
+    , chartPlaceholderLabel(nullptr)
+    , resultSummaryLabel(nullptr)
+    , modeStackedWidget(nullptr)
+    , refreshButton(nullptr)
+    , overviewButton(nullptr)
+{
+    initUI();
+
+    connect(dataService, &DataService::companyListReady, this, &DataPage::handleCompanyListReady);
+    connect(dataService, &DataService::overviewReady, this, &DataPage::handleOverviewReady);
+    connect(dataService, &DataService::classificationReady, this, &DataPage::handleClassificationReady);
+    connect(dataService, &DataService::serviceError, this, &DataPage::handleServiceError);
+
+    loadCompanyList();
+}
+
+QWidget *DataPage::createFunctionCard(const QString &title,
+                                      const QString &description,
+                                      const QString &buttonText,
+                                      QWidget *extraWidget,
+                                      QPushButton **actionButton)
+{
+    QFrame *card = createInfoCardFrame();
+    card->setMinimumHeight(178);
+
+    QVBoxLayout *layout = new QVBoxLayout(card);
+    layout->setContentsMargins(16, 14, 16, 14);
+    layout->setSpacing(8);
+
+    QLabel *titleLabel = new QLabel(title);
+    titleLabel->setObjectName("cardTitle");
+
+    QLabel *descLabel = new QLabel(description);
+    descLabel->setObjectName("cardSubText");
+    descLabel->setWordWrap(true);
+
+    layout->addWidget(titleLabel);
+    layout->addWidget(descLabel);
+
+    if (extraWidget != nullptr) {
+        layout->addWidget(extraWidget);
+    }
+
+    layout->addStretch();
+
+    QPushButton *button = new QPushButton(buttonText);
+    button->setObjectName("secondaryButton");
+    button->setCursor(Qt::PointingHandCursor);
+    button->setFixedHeight(34);
+    layout->addWidget(button);
+
+    if (actionButton != nullptr) {
+        *actionButton = button;
+    }
+
+    return card;
+}
+
+QWidget *DataPage::createTraceModeView()
+{
+    QWidget *page = new QWidget;
+    QGridLayout *layout = new QGridLayout(page);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setHorizontalSpacing(12);
+    layout->setVerticalSpacing(12);
+
+    QWidget *function1Card = createFunctionCard(
+        QStringLiteral("功能一：统计信息与原始图"),
+        QStringLiteral("从数据库读取当前公司的样本数据，返回十个特征的统计描述与原始折线图，并同步刷新下方预览表。"),
+        QStringLiteral("查看统计信息与原始图"),
+        nullptr,
+        &overviewButton);
+
+    QWidget *function2Card = createFunctionCard(
+        QStringLiteral("功能二：空值检测与修复"),
+        QStringLiteral("检测十项特征的空值，用本次公司数据的中位数修复；整列为空时保留空值。先预览，再保存新版本。"),
+        QStringLiteral("空值检测与修复"), nullptr, &missingButton);
+
+    QWidget *cleanConfig = new QWidget;
+    QHBoxLayout *cleanLayout = new QHBoxLayout(cleanConfig);
+    cleanLayout->setContentsMargins(0, 0, 0, 0);
+    windowInput = new QSpinBox;
+    windowInput->setRange(2, 500); windowInput->setValue(50);
+    windowInput->setPrefix(QStringLiteral("窗口 "));
+    thresholdInput = new QDoubleSpinBox;
+    thresholdInput->setRange(0.01, 20); thresholdInput->setValue(3);
+    thresholdInput->setPrefix(QStringLiteral("阈值 "));
+    cleanLayout->addWidget(windowInput); cleanLayout->addWidget(thresholdInput);
+
+    QWidget *function3Card = createFunctionCard(
+        QStringLiteral("功能三：滑动 Z-score 异常修复"),
+        QStringLiteral("先修复空值，再按前 N 个样本识别异常，异常点取前一个已修复值。兼容 Notebook 的简化规则，不是完整卡尔曼滤波。"),
+        QStringLiteral("预览异常值清洗"), cleanConfig, &cleanButton);
+
+    QWidget *distributionConfig = new QWidget;
+    QHBoxLayout *distributionConfigLayout = new QHBoxLayout(distributionConfig);
+    distributionConfigLayout->setContentsMargins(0, 0, 0, 0);
+    distributionConfigLayout->setSpacing(8);
+
+    distributionTypeComboBox = new QComboBox;
+    distributionTypeComboBox->addItems(QStringList() << QStringLiteral("箱型图分布")
+                                                     << QStringLiteral("直方图分布")
+                                                     << QStringLiteral("各公司分布总述"));
+
+    distributionFeatureComboBox = new QComboBox;
+    distributionFeatureComboBox->addItems(QStringList() << QStringLiteral("水温")
+                                                        << QStringLiteral("pH")
+                                                        << QStringLiteral("COD")
+                                                        << QStringLiteral("氨氮")
+                                                        << QStringLiteral("总磷")
+                                                        << QStringLiteral("液位")
+                                                        << QStringLiteral("ORP")
+                                                        << QStringLiteral("电导率")
+                                                        << QStringLiteral("溶解氧")
+                                                        << QStringLiteral("浊度"));
+
+    distributionConfigLayout->addWidget(distributionTypeComboBox, 1);
+    distributionConfigLayout->addWidget(distributionFeatureComboBox, 1);
+
+    QWidget *function4Card = createFunctionCard(
+        QStringLiteral("功能四：分布分析"),
+        QStringLiteral("C++ 计算分位数、箱线统计及直方图。公司对比使用原始数据和统一分箱边界。"),
+        QStringLiteral("生成分布图"),
+        distributionConfig, &distributionButton);
+
+    QWidget *correlationConfig = new QWidget;
+    QHBoxLayout *correlationConfigLayout = new QHBoxLayout(correlationConfig);
+    correlationConfigLayout->setContentsMargins(0, 0, 0, 0);
+    correlationConfigLayout->setSpacing(8);
+
+    QLabel *methodLabel = new QLabel(QStringLiteral("分析方式"));
+    methodLabel->setObjectName("cardSubText");
+
+    correlationMethodComboBox = new QComboBox;
+    correlationMethodComboBox->addItems(QStringList() << QStringLiteral("皮尔逊相关性分析")
+                                                      << QStringLiteral("斯皮尔曼相关性分析"));
+
+    correlationConfigLayout->addWidget(methodLabel);
+    correlationConfigLayout->addWidget(correlationMethodComboBox, 1);
+
+    QWidget *function5Card = createFunctionCard(
+        QStringLiteral("功能五：相关性分析"),
+        QStringLiteral("十项特征的 Pearson / Spearman 热力图；每对使用共同非空样本，常量或样本不足显示 NA。"),
+        QStringLiteral("生成相关性图"),
+        correlationConfig, &correlationButton);
+
+    layout->addWidget(function1Card, 0, 0);
+    layout->addWidget(function2Card, 0, 1);
+    layout->addWidget(function3Card, 0, 2);
+    layout->addWidget(function4Card, 1, 0, 1, 2);
+    layout->addWidget(function5Card, 1, 2);
+
+    return page;
+}
+
+QWidget *DataPage::createPredictionModeView()
+{
+    QWidget *page = new QWidget;
+    QGridLayout *layout = new QGridLayout(page);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setHorizontalSpacing(12);
+    layout->setVerticalSpacing(12);
+
+    QWidget *sequenceConfig = new QWidget;
+    QHBoxLayout *sequenceConfigLayout = new QHBoxLayout(sequenceConfig);
+    sequenceConfigLayout->setContentsMargins(0, 0, 0, 0);
+    sequenceConfigLayout->setSpacing(8);
+
+    sequenceFeatureComboBox = new QComboBox;
+    sequenceFeatureComboBox->addItems(QStringList() << QStringLiteral("COD")
+                                                    << QStringLiteral("氨氮")
+                                                    << QStringLiteral("总磷")
+                                                    << QStringLiteral("溶解氧")
+                                                    << QStringLiteral("浊度"));
+
+    sequenceWindowComboBox = new QComboBox;
+    sequenceWindowComboBox->addItems(QStringList() << QStringLiteral("窗口 12")
+                                                   << QStringLiteral("窗口 24")
+                                                   << QStringLiteral("窗口 48"));
+
+    sequenceConfigLayout->addWidget(sequenceFeatureComboBox, 1);
+    sequenceConfigLayout->addWidget(sequenceWindowComboBox, 1);
+
+    QWidget *function1Card = createFunctionCard(
+        QStringLiteral("功能一：时序概览与序列检查"),
+        QStringLiteral("后续查看预测数据的时间连续性、样本长度与目标指标趋势。"),
+        QStringLiteral("查看时序概览"),
+        sequenceConfig);
+
+    QWidget *function2Card = createFunctionCard(
+        QStringLiteral("功能二：空值检测与插值修复"),
+        QStringLiteral("后续针对时序数据执行缺失检测与插值修复。"),
+        QStringLiteral("检测并修复空值"));
+
+    QWidget *function3Card = createFunctionCard(
+        QStringLiteral("功能三：异常值平滑与滤波"),
+        QStringLiteral("后续对预测序列做平滑、异常点识别与滤波。"),
+        QStringLiteral("执行平滑处理"));
+
+    QWidget *forecastConfig = new QWidget;
+    QHBoxLayout *forecastConfigLayout = new QHBoxLayout(forecastConfig);
+    forecastConfigLayout->setContentsMargins(0, 0, 0, 0);
+    forecastConfigLayout->setSpacing(8);
+
+    forecastFeatureComboBox = new QComboBox;
+    forecastFeatureComboBox->addItems(QStringList() << QStringLiteral("COD")
+                                                    << QStringLiteral("氨氮")
+                                                    << QStringLiteral("总磷")
+                                                    << QStringLiteral("溶解氧"));
+
+    forecastStepComboBox = new QComboBox;
+    forecastStepComboBox->addItems(QStringList() << QStringLiteral("预测 6 步")
+                                                 << QStringLiteral("预测 12 步")
+                                                 << QStringLiteral("预测 24 步"));
+
+    forecastConfigLayout->addWidget(forecastFeatureComboBox, 1);
+    forecastConfigLayout->addWidget(forecastStepComboBox, 1);
+
+    QWidget *function4Card = createFunctionCard(
+        QStringLiteral("功能四：预测数据分布与窗口预览"),
+        QStringLiteral("后续用于查看目标指标分布和滑动窗口切片结果。"),
+        QStringLiteral("查看分布与窗口"),
+        forecastConfig);
+
+    QWidget *forecastCheckConfig = new QWidget;
+    QHBoxLayout *forecastCheckLayout = new QHBoxLayout(forecastCheckConfig);
+    forecastCheckLayout->setContentsMargins(0, 0, 0, 0);
+    forecastCheckLayout->setSpacing(8);
+
+    QLabel *checkLabel = new QLabel(QStringLiteral("分析项"));
+    checkLabel->setObjectName("cardSubText");
+
+    forecastCheckComboBox = new QComboBox;
+    forecastCheckComboBox->addItems(QStringList() << QStringLiteral("趋势性检查")
+                                                  << QStringLiteral("周期性检查")
+                                                  << QStringLiteral("平稳性检查"));
+
+    forecastCheckLayout->addWidget(checkLabel);
+    forecastCheckLayout->addWidget(forecastCheckComboBox, 1);
+
+    QWidget *function5Card = createFunctionCard(
+        QStringLiteral("功能五：预测前诊断分析"),
+        QStringLiteral("后续输出趋势、周期和平稳性等诊断结果，为预测建模做预检查。"),
+        QStringLiteral("生成诊断结果"),
+        forecastCheckConfig);
+
+    layout->addWidget(function1Card, 0, 0);
+    layout->addWidget(function2Card, 0, 1);
+    layout->addWidget(function3Card, 0, 2);
+    layout->addWidget(function4Card, 1, 0, 1, 2);
+    layout->addWidget(function5Card, 1, 2);
+
+    return page;
+}
+
+void DataPage::updateModeDescription(int modeIndex)
+{
+    if (modeIndex == 0) {
+        modeDescriptionLabel->setText(QStringLiteral("分类预处理：C++ 清洗与分析 → Qt 绘图 → 保存独立版本 → 溯源页面分类。原始数据不覆盖。"));
+        chartPlaceholderLabel->setText(QStringLiteral("图像展示区\n\n当前用于显示十特征原始折线图"));
+        resultSummaryLabel->setText(QStringLiteral("等待加载公司统计摘要。"));
+        return;
+    }
+
+    modeDescriptionLabel->setText(QStringLiteral("当前模式：预测数据预处理。后续接入 C++ ONNX Runtime 推理服务。"));
+    chartPlaceholderLabel->setText(QStringLiteral("预测模式图像展示区"));
+    resultSummaryLabel->setText(QStringLiteral("预测模式结果摘要将在后续接口接入后显示。"));
+}
+
+void DataPage::populatePreviewTable(const QJsonArray &previewRows)
+{
+    const QStringList headers = {
+        QStringLiteral("ID"),
+        QStringLiteral("水温"),
+        QStringLiteral("pH"),
+        QStringLiteral("COD"),
+        QStringLiteral("氨氮"),
+        QStringLiteral("总磷"),
+        QStringLiteral("液位"),
+        QStringLiteral("ORP"),
+        QStringLiteral("电导率"),
+        QStringLiteral("溶解氧"),
+        QStringLiteral("浊度")
+    };
+
+    previewTable->clear();
+    previewTable->setColumnCount(headers.size());
+    previewTable->setHorizontalHeaderLabels(headers);
+    previewTable->setRowCount(previewRows.size());
+
+    for (int row = 0; row < previewRows.size(); ++row) {
+        const QJsonObject item = previewRows.at(row).toObject();
+        QStringList values;
+        values << QString::number(item.value(QStringLiteral("id")).toDouble(), 'f', 0);
+        const QStringList keys = {"temperature","ph","cod","nh3n","tp","water_level","orp",
+                                  "conductivity","dissolved_oxygen","turbidity"};
+        for (const auto &key : keys) {
+            const auto cell = item.value(key);
+            values << (cell.isDouble() ? QString::number(cell.toDouble(),'f',4) : QStringLiteral("空值"));
+        }
+
+        for (int column = 0; column < values.size(); ++column) {
+            previewTable->setItem(row, column, new QTableWidgetItem(values.at(column)));
+        }
+    }
+}
+
+void DataPage::renderOverviewSummary(const QJsonObject &overview)
+{
+    const QJsonObject company = overview.value(QStringLiteral("company")).toObject();
+    const QJsonArray summary = overview.value(QStringLiteral("summary")).toArray();
+    const auto text=[](const QJsonValue &v) { return v.isDouble() ? QString::number(v.toDouble(),'f',4) : QStringLiteral("NA"); };
+
+    QStringList lines;
+    lines << QStringLiteral("公司：%1").arg(company.value(QStringLiteral("company_name")).toString());
+    lines << QStringLiteral("公司编码：%1").arg(company.value(QStringLiteral("company_code")).toString());
+    lines << QStringLiteral("数据集：%1").arg(overview.value(QStringLiteral("dataset")).toString());
+    lines << QStringLiteral("样本总数：%1").arg(overview.value(QStringLiteral("total_rows")).toInt());
+    lines << QString();
+
+    for (const QJsonValue &value : summary) {
+        const QJsonObject item = value.toObject();
+        lines << QStringLiteral("%1：均值 %2，标准差 %3，最小值 %4，最大值 %5")
+                     .arg(item.value(QStringLiteral("label")).toString())
+                     .arg(text(item.value(QStringLiteral("mean"))))
+                     .arg(text(item.value(QStringLiteral("std"))))
+                     .arg(text(item.value(QStringLiteral("min"))))
+                     .arg(text(item.value(QStringLiteral("max"))));
+    }
+
+    resultSummaryLabel->setText(lines.join(QStringLiteral("\n")));
+}
+
+void DataPage::renderOverviewChart(const QJsonArray &previewRows)
+{
+    if (previewRows.isEmpty()) {
+        currentChartPixmap = QPixmap();
+        chartPlaceholderLabel->setPixmap(QPixmap());
+        chartPlaceholderLabel->setText(QStringLiteral("没有可绘制的样本数据"));
+        return;
+    }
+
+    struct Feature {
+        const char *field;
+        const char *label;
+    };
+    const Feature features[] = {
+        {"temperature", "水温"}, {"ph", "pH"}, {"cod", "COD"},
+        {"nh3n", "氨氮"}, {"tp", "总磷"}, {"water_level", "液位"},
+        {"orp", "ORP"}, {"conductivity", "电导率"},
+        {"dissolved_oxygen", "溶解氧"}, {"turbidity", "浊度"}
+    };
+
+    QPixmap canvas(1200, 560);
+    canvas.fill(QColor(QStringLiteral("#F8FAFC")));
+    QPainter painter(&canvas);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+
+    const int columns = 5;
+    const int cellWidth = canvas.width() / columns;
+    const int cellHeight = canvas.height() / 2;
+    for (int featureIndex = 0; featureIndex < 10; ++featureIndex) {
+        QVector<double> values;
+        for (const QJsonValue &rowValue : previewRows) {
+            const QJsonValue value = rowValue.toObject().value(
+                QLatin1String(features[featureIndex].field));
+            if (value.isDouble()) {
+                values.append(value.toDouble());
+            }
+        }
+
+        const int column = featureIndex % columns;
+        const int row = featureIndex / columns;
+        const QRect cell(column * cellWidth, row * cellHeight,
+                         cellWidth, cellHeight);
+        const QRectF plot = QRectF(cell).adjusted(36, 34, -18, -28);
+
+        painter.setPen(QColor(QStringLiteral("#334155")));
+        painter.drawText(QRect(cell.left(), cell.top() + 7, cell.width(), 24),
+                         Qt::AlignCenter,
+                         QString::fromUtf8(features[featureIndex].label));
+        painter.setPen(QPen(QColor(QStringLiteral("#CBD5E1")), 1));
+        painter.drawRect(plot);
+
+        if (values.isEmpty()) {
+            painter.drawText(plot, Qt::AlignCenter, QStringLiteral("暂无数据"));
+            continue;
+        }
+
+        const auto range = std::minmax_element(values.constBegin(), values.constEnd());
+        double minimum = *range.first;
+        double maximum = *range.second;
+        if (minimum == maximum) {
+            minimum -= 0.5;
+            maximum += 0.5;
+        }
+
+        QPainterPath path;
+        bool connected=false;
+        painter.setPen(QPen(QColor(QStringLiteral("#2F80ED")), 2));
+        for (int index = 0; index < previewRows.size(); ++index) {
+            const auto value=previewRows.at(index).toObject().value(QLatin1String(features[featureIndex].field));
+            if (!value.isDouble()) { connected=false; continue; }
+            const double xRatio = previewRows.size() == 1
+                ? 0.5 : static_cast<double>(index) / (previewRows.size() - 1);
+            const double yRatio = (value.toDouble() - minimum) /
+                                  (maximum - minimum);
+            const QPointF point(plot.left() + xRatio * plot.width(),plot.bottom() - yRatio * plot.height());
+            if (connected) path.lineTo(point); else path.moveTo(point);
+            connected=true; painter.drawEllipse(point,2,2);
+        }
+        painter.drawPath(path);
+        painter.setPen(QColor(QStringLiteral("#64748B")));
+        painter.drawText(QRectF(plot.left(), plot.bottom() + 4,
+                                plot.width(), 18),
+                         Qt::AlignCenter,
+                         QStringLiteral("%1 个预览样本（空值断开）").arg(previewRows.size()));
+    }
+    painter.end();
+
+    currentChartPixmap = canvas;
+    updateChartPixmap();
+}
+
+void DataPage::updateChartPixmap()
+{
+    if (currentChartPixmap.isNull()) {
+        return;
+    }
+
+    const QSize targetSize = chartPlaceholderLabel->size() - QSize(12, 12);
+    if (targetSize.width() <= 0 || targetSize.height() <= 0) {
+        return;
+    }
+
+    chartPlaceholderLabel->setText(QString());
+    chartPlaceholderLabel->setPixmap(currentChartPixmap.scaled(
+        targetSize,
+        Qt::KeepAspectRatio,
+        Qt::SmoothTransformation));
+}
+
+void DataPage::resizeEvent(QResizeEvent *event)
+{
+    QWidget::resizeEvent(event);
+    updateChartPixmap();
+}
+
+void DataPage::initUI()
+{
+    QVBoxLayout *rootLayout = new QVBoxLayout(this);
+    rootLayout->setContentsMargins(0, 0, 0, 0);
+
+    QScrollArea *scrollArea = new QScrollArea(this);
+    scrollArea->setWidgetResizable(true);
+    scrollArea->setFrameShape(QFrame::NoFrame);
+    scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+
+    QWidget *content = new QWidget;
+    QVBoxLayout *layout = new QVBoxLayout(content);
+    layout->setContentsMargins(16, 14, 16, 14);
+    layout->setSpacing(12);
+
+    QFrame *controlCard = createInfoCardFrame();
+    QVBoxLayout *controlCardLayout = new QVBoxLayout(controlCard);
+    controlCardLayout->setContentsMargins(16, 14, 16, 14);
+    controlCardLayout->setSpacing(10);
+
+    QHBoxLayout *titleLayout = new QHBoxLayout;
+    QLabel *titleLabel = new QLabel(QStringLiteral("数据功能工作台"));
+    titleLabel->setObjectName("cardTitle");
+
+    modeDescriptionLabel = new QLabel;
+    modeDescriptionLabel->setObjectName("cardSubText");
+    modeDescriptionLabel->setWordWrap(true);
+
+    titleLayout->addWidget(titleLabel);
+    titleLayout->addSpacing(14);
+    titleLayout->addWidget(modeDescriptionLabel, 1);
+
+    QHBoxLayout *selectorLayout = new QHBoxLayout;
+    selectorLayout->setSpacing(10);
+
+    QLabel *taskModeLabel = new QLabel(QStringLiteral("任务模式"));
+    taskModeLabel->setObjectName("cardSubText");
+    taskModeComboBox = new QComboBox;
+    taskModeComboBox->addItems(QStringList() << QStringLiteral("溯源 / 分类数据预处理")
+                                             << QStringLiteral("预测数据预处理"));
+
+    QLabel *companyLabel = new QLabel(QStringLiteral("公司选择"));
+    companyLabel->setObjectName("cardSubText");
+    companyComboBox = new QComboBox;
+    companyComboBox->setMinimumWidth(220);
+
+    QLabel *datasetLabel = new QLabel(QStringLiteral("数据源"));
+    datasetLabel->setObjectName("cardSubText");
+    datasetComboBox = new QComboBox;
+    datasetComboBox->addItem(QStringLiteral("训练数据 train_data"), QStringLiteral("train_data"));
+    datasetComboBox->addItem(QStringLiteral("测试数据 test_data"), QStringLiteral("test_data"));
+
+    refreshButton = new QPushButton(QStringLiteral("刷新数据呈现"));
+    refreshButton->setObjectName("primaryButton");
+    refreshButton->setCursor(Qt::PointingHandCursor);
+    refreshButton->setFixedHeight(34);
+
+    selectorLayout->addWidget(taskModeLabel);
+    selectorLayout->addWidget(taskModeComboBox, 1);
+    selectorLayout->addSpacing(6);
+    selectorLayout->addWidget(companyLabel);
+    selectorLayout->addWidget(companyComboBox, 1);
+    selectorLayout->addSpacing(6);
+    selectorLayout->addWidget(datasetLabel);
+    selectorLayout->addWidget(datasetComboBox, 1);
+    selectorLayout->addStretch();
+    selectorLayout->addWidget(refreshButton);
+
+    controlCardLayout->addLayout(titleLayout);
+    controlCardLayout->addLayout(selectorLayout);
+    QHBoxLayout *processingLayout = new QHBoxLayout;
+    cleaningRunInput = new QSpinBox;
+    cleaningRunInput->setRange(0, INT_MAX);
+    cleaningRunInput->setSpecialValueText(QStringLiteral("原始数据（0）"));
+    cleaningRunInput->setToolTip(QStringLiteral("输入保存后的版本编号；概览按钮始终读取原始数据。公司/数据集切换时重置。"));
+    saveVersionButton = new QPushButton(QStringLiteral("确认并保存清洗新版本"));
+    saveVersionButton->setEnabled(false);
+    saveChartButton = new QPushButton(QStringLiteral("导出当前图 PNG"));
+    saveChartButton->setEnabled(false);
+    processingLayout->addWidget(new QLabel(QStringLiteral("分析数据版本")));
+    processingLayout->addWidget(cleaningRunInput);
+    processingLayout->addWidget(saveVersionButton);
+    processingLayout->addWidget(saveChartButton);
+    processingLayout->addStretch();
+    controlCardLayout->addLayout(processingLayout);
+
+    QFrame *previewCard = createInfoCardFrame();
+    QVBoxLayout *previewLayout = new QVBoxLayout(previewCard);
+    previewLayout->setContentsMargins(16, 12, 16, 12);
+    previewLayout->setSpacing(10);
+
+    QLabel *previewTitle = new QLabel(QStringLiteral("样本数据预览"));
+    previewTitle->setObjectName("cardTitle");
+
+    previewTable = new QTableWidget(0, 11);
+    previewTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    previewTable->verticalHeader()->setVisible(false);
+    previewTable->setAlternatingRowColors(true);
+    previewTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    previewTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    previewTable->setMinimumHeight(240);
+
+    previewLayout->addWidget(previewTitle);
+    previewLayout->addWidget(previewTable);
+
+    QFrame *modeCard = createInfoCardFrame();
+    QVBoxLayout *modeLayout = new QVBoxLayout(modeCard);
+    modeLayout->setContentsMargins(16, 12, 16, 12);
+    modeLayout->setSpacing(10);
+
+    QLabel *modeTitle = new QLabel(QStringLiteral("预处理功能布局"));
+    modeTitle->setObjectName("cardTitle");
+
+    modeStackedWidget = new QStackedWidget;
+    modeStackedWidget->addWidget(createTraceModeView());
+    modeStackedWidget->addWidget(createPredictionModeView());
+
+    modeLayout->addWidget(modeTitle);
+    modeLayout->addWidget(modeStackedWidget);
+
+    QHBoxLayout *bottomLayout = new QHBoxLayout;
+    bottomLayout->setSpacing(12);
+
+    QFrame *chartCard = new QFrame;
+    chartCard->setObjectName("displayCard");
+    chartCard->setMinimumHeight(320);
+
+    QVBoxLayout *chartLayout = new QVBoxLayout(chartCard);
+    chartLayout->setContentsMargins(0, 0, 0, 0);
+    chartLayout->setSpacing(0);
+
+    QFrame *noticeBar = new QFrame;
+    noticeBar->setObjectName("noticeBar");
+    noticeBar->setFixedHeight(40);
+
+    QHBoxLayout *noticeLayout = new QHBoxLayout(noticeBar);
+    noticeLayout->setContentsMargins(14, 0, 14, 0);
+
+    QLabel *noticeLabel = new QLabel(QStringLiteral("图像展示区：Qt 根据 Muduo 返回的预览序列绘制十特征曲线。"));
+    noticeLabel->setObjectName("noticeLabel");
+    noticeLayout->addWidget(noticeLabel);
+
+    QFrame *chartArea = new QFrame;
+    chartArea->setObjectName("mapArea");
+    QVBoxLayout *chartAreaLayout = new QVBoxLayout(chartArea);
+    chartAreaLayout->setContentsMargins(24, 24, 24, 24);
+
+    chartPlaceholderLabel = new QLabel;
+    chartPlaceholderLabel->setObjectName("mapPlaceholder");
+    chartPlaceholderLabel->setAlignment(Qt::AlignCenter);
+    chartPlaceholderLabel->setWordWrap(true);
+    chartPlaceholderLabel->setMinimumSize(640, 360);
+
+    chartAreaLayout->addStretch();
+    chartAreaLayout->addWidget(chartPlaceholderLabel);
+    chartAreaLayout->addStretch();
+
+    chartLayout->addWidget(noticeBar);
+    chartLayout->addWidget(chartArea, 1);
+
+    QFrame *resultCard = createInfoCardFrame();
+    resultCard->setMinimumWidth(360);
+    QVBoxLayout *resultLayout = new QVBoxLayout(resultCard);
+    resultLayout->setContentsMargins(16, 14, 16, 14);
+    resultLayout->setSpacing(8);
+
+    QLabel *resultTitle = new QLabel(QStringLiteral("结果摘要"));
+    resultTitle->setObjectName("cardTitle");
+
+    resultSummaryLabel = new QLabel;
+    resultSummaryLabel->setObjectName("cardSubText");
+    resultSummaryLabel->setWordWrap(true);
+    resultSummaryLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+
+    resultLayout->addWidget(resultTitle);
+    resultLayout->addWidget(resultSummaryLabel);
+    resultLayout->addStretch();
+
+    bottomLayout->addWidget(chartCard, 2);
+    bottomLayout->addWidget(resultCard, 1);
+
+    layout->addWidget(controlCard);
+    layout->addWidget(previewCard);
+    layout->addWidget(modeCard);
+    layout->addLayout(bottomLayout);
+
+    scrollArea->setWidget(content);
+    rootLayout->addWidget(scrollArea);
+
+    connect(taskModeComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
+        cleaningRunInput->setValue(0);
+        previewOperation.clear(); previewRequest = QJsonObject(); currentChartPixmap = QPixmap();
+        saveVersionButton->setEnabled(false); saveChartButton->setEnabled(false);
+        chartPlaceholderLabel->setPixmap(QPixmap());
+        modeStackedWidget->setCurrentIndex(index);
+        updateModeDescription(index);
+    });
+    connect(refreshButton, &QPushButton::clicked, this, &DataPage::loadOverviewData);
+    connect(overviewButton, &QPushButton::clicked, this, &DataPage::loadOverviewData);
+    connect(missingButton, &QPushButton::clicked, this, [this] { runClassification(QStringLiteral("missing")); });
+    connect(cleanButton, &QPushButton::clicked, this, [this] { runClassification(QStringLiteral("clean")); });
+    connect(distributionButton, &QPushButton::clicked, this, [this] { runClassification(QStringLiteral("distribution")); });
+    connect(correlationButton, &QPushButton::clicked, this, [this] { runClassification(QStringLiteral("correlation")); });
+    connect(saveVersionButton, &QPushButton::clicked, this, [this] {
+        if (previewOperation.isEmpty() || busy) return;
+        QDialog confirmation(this);
+        confirmation.setObjectName(QStringLiteral("classificationSaveConfirmation"));
+        confirmation.setWindowTitle(QStringLiteral("保存清洗版本"));
+        QVBoxLayout *confirmationLayout=new QVBoxLayout(&confirmation);
+        QLabel *notice=new QLabel(QStringLiteral("将按刚才预览的参数重新读取并清洗数据，保存独立版本，不覆盖原始表。若数据已变化，结果可能与预览不同。是否继续？"));
+        notice->setWordWrap(true);notice->setMaximumWidth(560);
+        QDialogButtonBox *buttons=new QDialogButtonBox(QDialogButtonBox::Yes|QDialogButtonBox::No);
+        buttons->button(QDialogButtonBox::No)->setDefault(true);
+        connect(buttons->button(QDialogButtonBox::Yes),&QPushButton::clicked,&confirmation,&QDialog::accept);
+        connect(buttons->button(QDialogButtonBox::No),&QPushButton::clicked,&confirmation,&QDialog::reject);
+        confirmationLayout->addWidget(notice);confirmationLayout->addWidget(buttons);
+        if (confirmation.exec()==QDialog::Accepted)
+            runClassification(previewOperation,true);
+    });
+    connect(saveChartButton, &QPushButton::clicked, this, [this] {
+        if (currentChartPixmap.isNull()) return;
+        const QString path=QFileDialog::getSaveFileName(this,QStringLiteral("保存图像"),QStringLiteral("classification.png"),QStringLiteral("PNG (*.png)"));
+        if (!path.isEmpty() && !currentChartPixmap.save(path,"PNG"))
+            QMessageBox::warning(this,QStringLiteral("图像导出"),QStringLiteral("保存失败，请检查路径权限。"));
+    });
+    connect(companyComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
+        if (index >= 0 && taskModeComboBox->currentIndex() == 0) {
+            cleaningRunInput->setValue(0);
+            loadOverviewData();
+        }
+    });
+    connect(datasetComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
+        if (index >= 0 && taskModeComboBox->currentIndex() == 0) {
+            cleaningRunInput->setValue(0);
+            loadOverviewData();
+        }
+    });
+
+    updateModeDescription(0);
+}
+
+void DataPage::loadCompanyList()
+{
+    setBusy(true);
+    companyComboBox->clear();
+    companyComboBox->addItem(QStringLiteral("正在加载公司列表..."), -1);
+    dataService->fetchCompanyList();
+}
+
+void DataPage::loadOverviewData()
+{
+    if (taskModeComboBox->currentIndex() != 0) {
+        return;
+    }
+
+    const int companyId = companyComboBox->currentData().toInt();
+    if (companyId <= 0) {
+        return;
+    }
+
+    previewOperation.clear(); previewRequest = QJsonObject();
+    setBusy(true);
+    chartPlaceholderLabel->setPixmap(QPixmap());
+    chartPlaceholderLabel->setText(QStringLiteral("正在从 Muduo 加载数据概览..."));
+    currentChartPixmap = QPixmap();
+    resultSummaryLabel->setText(QStringLiteral("正在加载统计摘要..."));
+
+    dataService->fetchOverview(companyId, datasetComboBox->currentData().toString(), 10);
+}
+
+void DataPage::handleCompanyListReady(const QJsonArray &companies)
+{
+    setBusy(false);
+    companyComboBox->blockSignals(true);
+    companyComboBox->clear();
+
+    for (const QJsonValue &value : companies) {
+        const QJsonObject company = value.toObject();
+        companyComboBox->addItem(company.value(QStringLiteral("company_name")).toString(),
+                                 company.value(QStringLiteral("company_id")).toInt());
+    }
+
+    if (companyComboBox->count() > 0) {
+        companyComboBox->setCurrentIndex(0);
+    } else {
+        companyComboBox->addItem(QStringLiteral("暂无公司数据"), -1);
+    }
+    companyComboBox->blockSignals(false);
+
+    if (companyComboBox->count() > 0) {
+        loadOverviewData();
+    }
+}
+
+void DataPage::handleOverviewReady(const QJsonObject &overview)
+{
+    setBusy(false);
+    const QJsonArray previewRows = overview.value(QStringLiteral("preview_rows")).toArray();
+    populatePreviewTable(previewRows);
+    renderOverviewSummary(overview);
+    renderOverviewChart(previewRows);
+    saveChartButton->setEnabled(!currentChartPixmap.isNull());
+}
+
+void DataPage::handleServiceError(const QString &message)
+{
+    previewOperation.clear(); previewRequest = QJsonObject();
+    setBusy(false); saveChartButton->setEnabled(false);
+    currentChartPixmap = QPixmap();
+    chartPlaceholderLabel->setPixmap(QPixmap());
+    chartPlaceholderLabel->setText(QStringLiteral("加载失败"));
+    populatePreviewTable(QJsonArray());
+    resultSummaryLabel->setText(message);
+    QMessageBox::warning(this, QStringLiteral("数据模块"), message);
+}
+
+void DataPage::setBusy(bool value)
+{
+    busy=value;
+    for (QWidget *widget : std::initializer_list<QWidget*>{companyComboBox,datasetComboBox,taskModeComboBox,
+         refreshButton,overviewButton,missingButton,cleanButton,distributionButton,correlationButton,
+         cleaningRunInput,windowInput,thresholdInput,distributionTypeComboBox,distributionFeatureComboBox,correlationMethodComboBox})
+        widget->setEnabled(!value);
+    saveVersionButton->setEnabled(!value && !previewOperation.isEmpty());
+    saveChartButton->setEnabled(!value && !currentChartPixmap.isNull());
+}
+
+void DataPage::runClassification(QString operation, bool persist)
+{
+    if (busy || taskModeComboBox->currentIndex()!=0 || companyComboBox->currentData().toInt()<=0) return;
+    QJsonObject request;
+    if (persist) request=previewRequest;
+    else {
+        request.insert("company_id",companyComboBox->currentData().toInt());
+        request.insert("dataset",datasetComboBox->currentData().toString());
+        request.insert("cleaning_run_id",cleaningRunInput->value());
+        request.insert("window",windowInput->value()); request.insert("threshold",thresholdInput->value());
+        const QStringList fields={"temperature","ph","cod","nh3n","tp","water_level","orp","conductivity","dissolved_oxygen","turbidity"};
+        request.insert("feature",fields.at(distributionFeatureComboBox->currentIndex()));
+        const QStringList views={"boxplot","histogram","comparison"};
+        request.insert("view",views.at(distributionTypeComboBox->currentIndex()));
+        request.insert("method",correlationMethodComboBox->currentIndex()==0 ? "pearson" : "spearman");
+        if (operation=="distribution" && request.value("view").toString()=="comparison") request.insert("cleaning_run_id",0);
+    }
+    request.insert("persist",persist);
+    previewOperation.clear(); previewRequest = QJsonObject();
+    if (!persist && (operation=="missing" || operation=="clean")) {
+        previewRequest=request; previewOperation=operation;
+    }
+    setBusy(true);
+    resultSummaryLabel->setText(persist ? QStringLiteral("正在清洗并保存独立版本...") : QStringLiteral("正在执行 C++ 分类数据处理..."));
+    dataService->fetchClassification(operation,request);
+}
+
+void DataPage::handleClassificationReady(const QJsonObject &result)
+{
+    const bool persisted=result.value("persisted").toBool();
+    if (persisted) { previewOperation.clear(); previewRequest = QJsonObject(); }
+    setBusy(false);
+    populatePreviewTable(result.value("preview_after").toArray());
+    currentChartPixmap=renderClassificationChart(result); updateChartPixmap();
+    saveChartButton->setEnabled(true);
+    QStringList lines;
+    lines << QStringLiteral("%1 / %2；处理全部 %3 条；表格前50条，曲线最多300点")
+        .arg(result.value("company_name").toString()).arg(result.value("dataset").toString())
+        .arg(result.value("sample_count").toInt());
+    lines << QStringLiteral("输入版本：%1（0为原始）；规则：%2")
+        .arg(result.value("input_cleaning_run_id").toDouble(),0,'f',0).arg(result.value("rule").toString());
+    if (persisted) {
+        const double run=result.value("cleaning_run_id").toDouble();
+        lines << QStringLiteral("已保存版本 %1。溯源页面输入同一数据集、样本ID和版本编号进行分类。").arg(run,0,'f',0);
+        if (run<=INT_MAX) cleaningRunInput->setValue(static_cast<int>(run));
+        else lines << QStringLiteral("版本超出 Qt 输入范围，请通过 HTTP API 使用该版本。");
+    } else lines << QStringLiteral("本次仅预览/分析，没有修改原始数据库。");
+    const auto text=[](const QJsonValue &v) { return v.isDouble() ? QString::number(v.toDouble(),'g',5) : QStringLiteral("NA"); };
+    for (const auto &value : result.value("features").toArray()) {
+        const auto f=value.toObject();
+        lines << QStringLiteral("%1：空值 %2→%3；填充 %4；异常 %5；均值 %6；中位数 %7")
+            .arg(f.value("label").toString()).arg(f.value("missing_before").toInt()).arg(f.value("missing_after").toInt())
+            .arg(f.value("filled_count").toInt()).arg(f.value("outlier_count").toInt()).arg(text(f.value("mean"))).arg(text(f.value("median")));
+    }
+    for (const auto &value : result.value("groups").toArray()) {
+        const auto g=value.toObject();
+        lines << QStringLiteral("%1：Q10/Q25/中位/Q75/Q90 = %2/%3/%4/%5/%6；箱外异常 %7")
+            .arg(g.value("company_name").toString()).arg(text(g.value("q10"))).arg(text(g.value("q25")))
+            .arg(text(g.value("median"))).arg(text(g.value("q75"))).arg(text(g.value("q90"))).arg(g.value("outlier_count").toInt());
+    }
+    for (const auto &value : result.value("high_correlations").toArray()) {
+        const auto pair=value.toObject();
+        lines << QStringLiteral("高相关 %1 / %2：%3（共同样本 %4）")
+            .arg(pair.value("first").toString()).arg(pair.value("second").toString())
+            .arg(text(pair.value("coefficient"))).arg(pair.value("sample_count").toInt());
+    }
+    for (const auto &warning : result.value("warnings").toArray()) lines << QStringLiteral("提示：")+warning.toString();
+    resultSummaryLabel->setText(lines.join('\n'));
+}

@@ -1,0 +1,8 @@
+# The saved sklearn artifacts were created with this exact version.
+scikit-learn==1.6.1
+joblib>=1.4,<2
+numpy>=1.26,<3
+# Verified exporter/runtime combination; retraining remains offline.
+onnx==1.17.0
+skl2onnx==1.18.0
+onnxruntime==1.20.1
