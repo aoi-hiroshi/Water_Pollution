@@ -110,18 +110,18 @@ HTTP 断开不会取消已经开始的 SQL/计算；大型数据处理后续应�
 3. 如果是新库，管理员先建库，再依次运行三个安装脚本；如果已有旧表，按 `sql/README.md` 的迁移顺序执行并先备份。
 
 ```bash
-mysql -u root -p water_quality_system < server/sql/000_base_schema.sql
-mysql -u root -p water_quality_system < server/sql/001_processing_model_schema.sql
-mysql -u root -p water_quality_system < server/sql/002_compatibility_views.sql
+mysql -u root -p Water_Quality_System < server/sql/000_base_schema.sql
+mysql -u root -p Water_Quality_System < server/sql/001_processing_model_schema.sql
+mysql -u root -p Water_Quality_System < server/sql/002_compatibility_views.sql
 ```
 
 脚本使用 IF NOT EXISTS，不自动纠正已有表结构。基础表的字段需与用户手册一致。
 管理员给应用账号原表 SELECT 权限，给两个版本表 SELECT + INSERT 权限；运行账号不需要建表或修改原始样本权限。
 
 ```sql
-GRANT SELECT ON water_quality_system.* TO 'water_app'@'localhost';
-GRANT INSERT ON water_quality_system.processing_runs TO 'water_app'@'localhost';
-GRANT INSERT ON water_quality_system.processed_samples TO 'water_app'@'localhost';
+GRANT SELECT ON Water_Quality_System.* TO 'water_app'@'localhost';
+GRANT INSERT ON Water_Quality_System.processing_runs TO 'water_app'@'localhost';
+GRANT INSERT ON Water_Quality_System.processed_samples TO 'water_app'@'localhost';
 ```
 
 账号与实际连接地址要匹配；不要为了让 Qt 使用系统而公开 MySQL 端口，Qt 只访问 Muduo 的 8080。
