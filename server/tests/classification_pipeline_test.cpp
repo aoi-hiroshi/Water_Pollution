@@ -55,6 +55,8 @@ int main() {
         const auto saved=invoke(prefix+"clean",{{"company_id",1},{"dataset","test_data"},{"persist",true}});
         CHECK(saved.status==200); const auto run=Json::parse(saved.body).at("data").at("cleaning_run_id").get<std::int64_t>();
         CHECK(run==100 && state->begins==1 && state->commits==1 && state->writes==3);
+        CHECK(state->datasets.at(run)=="test" && state->last_changed_rows==2);
+        CHECK(state->changed_masks.at(run).at(0)!=0 && state->changed_masks.at(run).at(50)!=0);
         const auto classified=invoke("/api/v1/inference/classify",{{"sample_id",1},{"dataset","test_data"},{"cleaning_run_id",run}});
         CHECK(classified.status==200 && Json::parse(classified.body).at("data").at("cleaning_run_id")==run);
         CHECK(invoke("/api/v1/inference/classify",{{"sample_id",1},{"dataset","test_data"}}).status==422);

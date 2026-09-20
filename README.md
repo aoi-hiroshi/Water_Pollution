@@ -65,5 +65,7 @@ For first-time setup, feature status, desktop usage and troubleshooting, see
 the [Chinese user manual](docs/用户使用手册.md).
 For the new data workflow, API contract, SQL migrations and VM setup, see
 [classification preprocessing](server/docs/classification_preprocessing.md).
-Create or migrate the three base tables AND sample data; run
-`server/sql/001_classification_cleaning.sql` before saving versions.
+Create or migrate the schema and sample data using the ordered scripts in
+[`server/sql/README.md`](server/sql/README.md). Classification and forecast now
+share one immutable `water_samples` table; `train_data` and `test_data` remain
+read-only compatibility views for the existing API.

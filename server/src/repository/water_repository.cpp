@@ -130,6 +130,29 @@ std::string datasetTable(const std::string& dataset) {
     throw std::invalid_argument("unsupported dataset");
 }
 
+std::string datasetSplit(const std::string& dataset) {
+    if (dataset == "train_data") {
+        return "train";
+    }
+    if (dataset == "test_data") {
+        return "test";
+    }
+    throw std::invalid_argument("unsupported dataset");
+}
+
+std::uint64_t changedMask(const domain::WaterSample& before,
+                          const domain::WaterSample& after) {
+    std::uint64_t mask = 0;
+    for (std::size_t index = 0;
+         index < domain::kClassificationFeatures.size(); ++index) {
+        const auto member = domain::kClassificationFeatures[index].member;
+        if (before.*member != after.*member) {
+            mask |= std::uint64_t{1} << index;
+        }
+    }
+    return mask;
+}
+
 std::string summarySql(const std::string& table) {
     std::string sql = "SELECT COUNT(*) AS total_rows";
     for (const auto& feature : kFeatures) {
@@ -270,16 +293,19 @@ std::vector<domain::WaterSample> WaterRepository::loadForecastWindow(
 std::vector<domain::WaterSample> WaterRepository::loadClassificationSamples(
     db::DbConnection& connection, const domain::ClassificationDataRequest& request) const {
     const auto table = datasetTable(request.dataset);
+    const auto split = datasetSplit(request.dataset);
     db::DbParameters parameters;
     std::string sql;
     if (request.cleaning_run_id > 0) {
-        const db::DbParameters run_parameters{request.cleaning_run_id, request.company_id, request.dataset};
+        const db::DbParameters run_parameters{
+            request.cleaning_run_id, request.company_id, split};
         const auto runs = connection.query(
-            "SELECT id FROM classification_cleaning_runs WHERE id = ? AND company_id = ? AND dataset = ?",
+            "SELECT run_id FROM processing_runs WHERE task_type = 'classification' "
+            "AND run_id = ? AND company_id = ? AND data_split = ?",
             run_parameters);
         if (runs.empty()) { throw std::out_of_range("cleaning version not found for company/dataset"); }
         sql = "SELECT source_sample_id AS id, temperature, ph, cod, nh3n, tp, water_level, orp, "
-              "conductivity, dissolved_oxygen, turbidity, company_id FROM classification_cleaned_samples "
+              "conductivity, dissolved_oxygen, turbidity, company_id FROM processed_samples "
               "WHERE run_id = ? ORDER BY source_sample_id ASC";
         parameters = {request.cleaning_run_id};
     } else {
@@ -312,29 +338,35 @@ std::int64_t WaterRepository::saveClassificationVersion(
         throw std::invalid_argument("invalid cleaning snapshot");
     }
     static_cast<void>(datasetTable(request.dataset));
+    const auto split = datasetSplit(request.dataset);
+    std::uint64_t changed_rows = 0;
     for (std::size_t i=0; i<result.sample_count; ++i) {
         const auto& before=result.original_rows[i]; const auto& after=result.processed_rows[i];
         if (after.id != before.id || after.company_id != request.company_id ||
             before.company_id != request.company_id || after.id <= 0) {
             throw std::invalid_argument("invalid cleaning snapshot scope");
         }
+        if (changedMask(before, after) != 0) {
+            ++changed_rows;
+        }
     }
     db::Transaction transaction(connection);
-    db::DbParameters parameters{request.company_id, request.dataset, request.operation, result.rule,
+    db::DbParameters parameters{request.company_id, split, request.operation, result.rule,
         request.cleaning_run_id > 0 ? db::DbValue{request.cleaning_run_id} : db::DbValue{std::monostate{}},
         static_cast<std::uint64_t>(request.window), request.threshold,
-        static_cast<std::uint64_t>(result.sample_count)};
+        static_cast<std::uint64_t>(result.sample_count), changed_rows};
     const auto inserted = connection.execute(
-        "INSERT INTO classification_cleaning_runs(company_id,dataset,operation,rule,parent_run_id,"
-        "window_size,z_threshold,sample_count) VALUES(?,?,?,?,?,?,?,?)", parameters);
+        "INSERT INTO processing_runs(task_type,company_id,data_split,operation,algorithm_name,"
+        "parent_run_id,window_size,z_threshold,sample_count,changed_count,status,completed_at) "
+        "VALUES('classification',?,?,?,?,?,?,?,?,?,'completed',CURRENT_TIMESTAMP)", parameters);
     if (inserted.last_insert_id == 0 ||
         inserted.last_insert_id > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
         throw db::DbError("invalid cleaning run id returned by database");
     }
     const auto run_id = static_cast<std::int64_t>(inserted.last_insert_id);
-    std::string prefix = "INSERT INTO classification_cleaned_samples(run_id,source_sample_id,company_id";
+    std::string prefix = "INSERT INTO processed_samples(run_id,source_sample_id,company_id";
     for (const auto& feature : domain::kClassificationFeatures) { prefix += "," + std::string{feature.field}; }
-    for (const auto& feature : domain::kClassificationFeatures) { prefix += ",original_" + std::string{feature.field}; }
+    prefix += ",changed_mask";
     prefix += ") VALUES ";
     constexpr std::size_t batch_size = 128;
     for (std::size_t start = 0; start < result.sample_count; start += batch_size) {
@@ -344,17 +376,16 @@ std::int64_t WaterRepository::saveClassificationVersion(
         for (auto index = start; index < end; ++index) {
             if (index != start) { sql += ','; }
             sql += "(";
-            for (std::size_t column = 0; column < 23; ++column) { sql += column == 0 ? "?" : ",?"; }
+            for (std::size_t column = 0; column < 14; ++column) { sql += column == 0 ? "?" : ",?"; }
             sql += ")";
             const auto& after = result.processed_rows[index];
             const auto& before = result.original_rows[index];
             parameters.insert(parameters.end(), {run_id, after.id, after.company_id});
-            for (const auto* row : {&after, &before}) {
-                for (const auto& feature : domain::kClassificationFeatures) {
-                    const auto& value = row->*feature.member;
-                    parameters.push_back(value ? db::DbValue{*value} : db::DbValue{std::monostate{}});
-                }
+            for (const auto& feature : domain::kClassificationFeatures) {
+                const auto& value = after.*feature.member;
+                parameters.push_back(value ? db::DbValue{*value} : db::DbValue{std::monostate{}});
             }
+            parameters.emplace_back(changedMask(before, after));
         }
         connection.execute(sql, parameters);
     }
@@ -366,12 +397,14 @@ std::optional<domain::WaterSample> WaterRepository::findCleanedSampleById(
     db::DbConnection& connection, const std::string& dataset,
     std::int64_t sample_id, std::int64_t cleaning_run_id) const {
     static_cast<void>(datasetTable(dataset));
-    const db::DbParameters parameters{cleaning_run_id, sample_id, dataset};
+    const db::DbParameters parameters{
+        cleaning_run_id, sample_id, datasetSplit(dataset)};
     const auto rows = connection.query(
         "SELECT s.source_sample_id AS id,s.temperature,s.ph,s.cod,s.nh3n,s.tp,s.water_level,s.orp,"
-        "s.conductivity,s.dissolved_oxygen,s.turbidity,s.company_id FROM classification_cleaned_samples s "
-        "JOIN classification_cleaning_runs r ON r.id=s.run_id "
-        "WHERE s.run_id=? AND s.source_sample_id=? AND r.dataset=? LIMIT 1", parameters);
+        "s.conductivity,s.dissolved_oxygen,s.turbidity,s.company_id FROM processed_samples s "
+        "JOIN processing_runs r ON r.run_id=s.run_id "
+        "WHERE s.run_id=? AND s.source_sample_id=? AND r.task_type='classification' "
+        "AND r.data_split=? LIMIT 1", parameters);
     return rows.empty() ? std::nullopt : std::optional<domain::WaterSample>{toSample(rows.front())};
 }
 

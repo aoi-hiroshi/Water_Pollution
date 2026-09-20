@@ -34,7 +34,8 @@ public:
         db::DbConnection& connection,
         const domain::ClassificationDataRequest& request) const;
 
-    // Stores input and output snapshots in new tables. Never UPDATEs raw data.
+    // Stores an immutable processing version. Original values stay in
+    // water_samples and are resolved through source_sample_id.
     [[nodiscard]] std::int64_t saveClassificationVersion(
         db::DbConnection& connection,
         const domain::ClassificationDataRequest& request,

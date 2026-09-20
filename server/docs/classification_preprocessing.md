@@ -15,8 +15,10 @@ Windows 已编译 Qt、运行 C++ 组件与接口测试；Linux Muduo + 真实 M
 | `../WaterLogin/dataservice.cpp` | Qt 发起清洗与分析请求，忽略旧请求结果 |
 | `../WaterLogin/datapage.cpp` | 按钮、参数、表格、摘要、版本选择和 PNG 导出 |
 | `../WaterLogin/classificationcharts.cpp` | Qt 绘制对比曲线、箱线图、直方图、相关性热力图 |
-| `sql/000_base_schema.sql` | 新数据库所需的基础表，不覆盖已有表 |
-| `sql/001_classification_cleaning.sql` | 独立清洗版本与清洗样本表 |
+| `sql/000_base_schema.sql` | 公司和统一原始水质数据表 |
+| `sql/001_processing_model_schema.sql` | 处理版本、模型、指标和推理结果表 |
+| `sql/002_compatibility_views.sql` | 为现有接口提供 train_data/test_data 只读视图 |
+| `sql/100_migrate_legacy_schema.sql` | 旧表一次性无损迁移脚本 |
 
 ```text
 Qt 分类数据页 → POST /api/v1/data/classification/{操作}
@@ -90,8 +92,9 @@ curl -X POST http://127.0.0.1:8080/api/v1/inference/classify \
 
 ## 4. 保存版本，而不是破坏原表
 
-`classification_cleaning_runs` 保存范围、父版本、规则、窗口、阈值、样本数和创建时间。
-`classification_cleaned_samples` 保存源样本 ID、清洗前十特征和清洗后十特征。
+`processing_runs` 保存任务类型、范围、父版本、算法、窗口、阈值、样本数和状态。
+`processed_samples` 只保存源样本 ID 与处理后的十个特征；原值通过外键回查
+`water_samples`，不再重复存一份。
 一个事务插入版本及全部样本，每批最多 128 条；任一批失败自动回滚，不产生半成品。
 不会 UPDATE train_data/test_data。`cleaning_run_id=0` 始终读取原始表，概览按钮也始终读取原始数据。
 已保存版本可以作为后续分析或清洗的输入；版本与公司、数据集绑定，不允许串用。
@@ -104,11 +107,12 @@ HTTP 断开不会取消已经开始的 SQL/计算；大型数据处理后续应�
 
 1. 将源码（尤其 server、sql、models）复制/同步到 Linux；不要复制 Windows exe/dll 当作 Linux 程序。
 2. 迁移原数据库的**表结构和样本数据**；仅创建空表无法分析。可使用 MySQL 官方备份导出/导入方式；不要直接复制运行中数据库的数据目录。
-3. 如果是新库，管理员先建库，再依次运行以下脚本；如果迁移了旧库，先检查基础表字段，001 必须运行。
+3. 如果是新库，管理员先建库，再依次运行三个安装脚本；如果已有旧表，按 `sql/README.md` 的迁移顺序执行并先备份。
 
 ```bash
 mysql -u root -p water_quality_system < server/sql/000_base_schema.sql
-mysql -u root -p water_quality_system < server/sql/001_classification_cleaning.sql
+mysql -u root -p water_quality_system < server/sql/001_processing_model_schema.sql
+mysql -u root -p water_quality_system < server/sql/002_compatibility_views.sql
 ```
 
 脚本使用 IF NOT EXISTS，不自动纠正已有表结构。基础表的字段需与用户手册一致。
@@ -116,8 +120,8 @@ mysql -u root -p water_quality_system < server/sql/001_classification_cleaning.s
 
 ```sql
 GRANT SELECT ON water_quality_system.* TO 'water_app'@'localhost';
-GRANT INSERT ON water_quality_system.classification_cleaning_runs TO 'water_app'@'localhost';
-GRANT INSERT ON water_quality_system.classification_cleaned_samples TO 'water_app'@'localhost';
+GRANT INSERT ON water_quality_system.processing_runs TO 'water_app'@'localhost';
+GRANT INSERT ON water_quality_system.processed_samples TO 'water_app'@'localhost';
 ```
 
 账号与实际连接地址要匹配；不要为了让 Qt 使用系统而公开 MySQL 端口，Qt 只访问 Muduo 的 8080。
