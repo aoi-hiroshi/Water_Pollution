@@ -16,24 +16,23 @@ USE Water_Quality_System;
 
 SET NAMES utf8mb4;
 
--- Provide stable placeholder master data when company_info has not been seeded.
--- Existing rows are preserved. Replace the display names later if real company
--- names are available; company_id and company_code should remain stable.
+-- Seed the seven companies only when their primary keys are absent. Existing
+-- company rows are preserved, including their names and descriptions.
 INSERT IGNORE INTO company_info (
     company_id,
     company_name,
     company_code,
     task_type,
-    sampling_interval_seconds,
-    status
+    location,
+    description
 ) VALUES
-    (1, '溯源公司1', 'TRACE_1', 'classification', 7200, 'enabled'),
-    (2, '溯源公司2', 'TRACE_2', 'classification', 7200, 'enabled'),
-    (3, '溯源公司3', 'TRACE_3', 'classification', 7200, 'enabled'),
-    (4, '溯源公司4', 'TRACE_4', 'classification', 7200, 'enabled'),
-    (5, '溯源公司5', 'TRACE_5', 'classification', 7200, 'enabled'),
-    (6, '溯源公司6', 'TRACE_6', 'classification', 7200, 'enabled'),
-    (7, '预测公司7', 'FORECAST_7', 'forecast', 60, 'enabled');
+    (1, '海东造船厂', 'HD_SHIP', 'trace', '台州', '溯源企业'),
+    (2, '台州市椒江星明印染厂', 'XM_PRINT', 'trace', '台州', '溯源企业'),
+    (3, '台州市前进化工有限公司', 'QJ_CHEM', 'trace', '台州', '溯源企业'),
+    (4, '台州新农科技有限公司', 'XN_TECH', 'trace', '台州', '溯源企业'),
+    (5, '浙江海正药业股份有限公司', 'HZ_WS', 'trace', '台州', '溯源企业'),
+    (6, '浙江九洲药业股份有限公司', 'JZ_PHARMA', 'trace', '台州', '溯源企业'),
+    (7, '浙江海正药业股份有限公司', 'HZ_YT', 'forecast', '台州', '预测企业');
 
 DROP TEMPORARY TABLE IF EXISTS water_samples_import;
 

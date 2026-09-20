@@ -1,8 +1,8 @@
 -- Fresh-install step 1/3.
 -- Select the application database first, for example:
---   CREATE DATABASE IF NOT EXISTS water_quality_system
+--   CREATE DATABASE IF NOT EXISTS Water_Quality_System
 --     CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
---   USE water_quality_system;
+--   USE Water_Quality_System;
 --
 -- Raw observations for classification and forecast share one table. A row is
 -- immutable after import; cleaning output belongs in processed_samples.
@@ -11,16 +11,12 @@ CREATE TABLE IF NOT EXISTS company_info (
     company_name VARCHAR(128) NOT NULL,
     company_code VARCHAR(64) NOT NULL,
     task_type VARCHAR(32) NOT NULL,
-    sampling_interval_seconds INT UNSIGNED NOT NULL,
-    location VARCHAR(255) NULL,
+    location VARCHAR(128) NULL,
     description TEXT NULL,
-    status VARCHAR(16) NOT NULL DEFAULT 'enabled',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uk_company_code(company_code),
     CONSTRAINT chk_company_task
-        CHECK(task_type IN ('classification','forecast')),
-    CONSTRAINT chk_company_interval CHECK(sampling_interval_seconds > 0),
-    CONSTRAINT chk_company_status CHECK(status IN ('enabled','disabled'))
+        CHECK(task_type IN ('trace','forecast'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS water_samples (

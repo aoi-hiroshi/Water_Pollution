@@ -8,16 +8,12 @@
 --   3. this file
 -- Do not run 002_compatibility_views.sql before this migration.
 
-ALTER TABLE company_info
-    ADD COLUMN sampling_interval_seconds INT UNSIGNED NULL,
-    ADD COLUMN status VARCHAR(16) NOT NULL DEFAULT 'enabled';
-
 UPDATE company_info
-SET task_type = 'classification', sampling_interval_seconds = 7200
+SET task_type = 'trace'
 WHERE company_id BETWEEN 1 AND 6;
 
 UPDATE company_info
-SET task_type = 'forecast', sampling_interval_seconds = 60
+SET task_type = 'forecast'
 WHERE company_id = 7;
 
 UPDATE company_info
@@ -26,15 +22,11 @@ WHERE created_at IS NULL;
 
 ALTER TABLE company_info
     MODIFY task_type VARCHAR(32) NOT NULL,
-    MODIFY sampling_interval_seconds INT UNSIGNED NOT NULL,
+    MODIFY location VARCHAR(128) NULL,
     MODIFY created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     ADD UNIQUE KEY uk_company_code(company_code),
     ADD CONSTRAINT chk_company_task
-        CHECK(task_type IN ('classification','forecast')),
-    ADD CONSTRAINT chk_company_interval
-        CHECK(sampling_interval_seconds > 0),
-    ADD CONSTRAINT chk_company_status
-        CHECK(status IN ('enabled','disabled'));
+        CHECK(task_type IN ('trace','forecast'));
 
 INSERT INTO water_samples(
     company_id,data_split,sample_index,source_record_id,

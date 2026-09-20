@@ -10,7 +10,7 @@
 namespace water::db::test {
 inline DbRow classificationCompanyRow() {
     return {{"company_id","1"},{"company_name","Factory One"},{"company_code","F1"},
-            {"task_type","classification"},{"location",std::nullopt},
+            {"task_type","trace"},{"location",std::nullopt},
             {"description",std::nullopt},{"created_at",std::nullopt}};
 }
 inline DbRows classificationRows(std::size_t count=130) {

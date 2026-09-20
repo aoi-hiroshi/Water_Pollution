@@ -34,7 +34,7 @@ public:
         if (sql.find("FROM company_info") != std::string_view::npos) {
             if (scenario_->no_company) { return {}; }
             return {{{"company_id", "7"}, {"company_name", "Forecast Station"}, {"company_code", "P-007"},
-                     {"task_type", "prediction"}, {"location", std::nullopt}, {"description", std::nullopt}, {"created_at", std::nullopt}}};
+                     {"task_type", "forecast"}, {"location", std::nullopt}, {"description", std::nullopt}, {"created_at", std::nullopt}}};
         }
         CHECK(sql.find("FROM test_data WHERE company_id = ?") != std::string_view::npos);
         CHECK(sql.find("ORDER BY id DESC LIMIT 120") != std::string_view::npos);

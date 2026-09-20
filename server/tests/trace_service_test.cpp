@@ -37,7 +37,7 @@ DbRow companyRow(std::int64_t id, std::string name, std::string code) {
         {"company_id", std::to_string(id)},
         {"company_name", std::move(name)},
         {"company_code", std::move(code)},
-        {"task_type", "classification"},
+        {"task_type", "trace"},
         {"location", std::nullopt},
         {"description", std::nullopt},
         {"created_at", std::nullopt},

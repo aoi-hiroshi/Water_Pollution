@@ -1,13 +1,13 @@
 # 数据库脚本使用说明
 
-项目只使用一个 MySQL 数据库，建议命名为 `water_quality_system`。分类与预测共用公司表和原始水质表，避免维护两份相同字段的数据。
+项目只使用一个 MySQL 数据库，命名为 `Water_Quality_System`。分类与预测共用公司表和原始水质表，避免维护两份相同字段的数据。Linux 上数据库名可区分大小写，所有命令应保持该写法。
 
 ## 全新安装
 
 ```sql
-CREATE DATABASE IF NOT EXISTS water_quality_system
+CREATE DATABASE IF NOT EXISTS Water_Quality_System
   CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
-USE water_quality_system;
+USE Water_Quality_System;
 SOURCE server/sql/000_base_schema.sql;
 SOURCE server/sql/001_processing_model_schema.sql;
 SOURCE server/sql/002_compatibility_views.sql;
@@ -29,7 +29,7 @@ SOURCE server/sql/002_compatibility_views.sql;
 
 不要把 `scaled`、`featured`、`.npy`、`.pkl` 或 Notebook 额外生成的时间列导入数据库。缩放参数已经封装在 ONNX 模型中。
 
-建议公司 1～6 设置 `task_type='classification'`、采样周期 7200 秒，公司 7 设置 `task_type='forecast'`、采样周期 60 秒。
+`company_info` 保持原有七字段业务结构：`company_id`、`company_name`、`company_code`、`task_type`、`location`、`description`、`created_at`。公司 1～6 使用 `task_type='trace'`，公司 7 使用 `task_type='forecast'`。采样间隔由数据集/模型契约管理，不在公司表里重复保存。
 
 ## 表的职责
 

@@ -35,7 +35,7 @@ DbRow companyRow() {
         {"company_id", "7"},
         {"company_name", "Example Water Company"},
         {"company_code", "WATER-007"},
-        {"task_type", "classification"},
+        {"task_type", "trace"},
         {"location", "Zhejiang"},
         {"description", "test company"},
         {"created_at", "2026-09-16 10:00:00"},
