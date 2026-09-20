@@ -1,49 +1,103 @@
 #include "homepage.h"
 
+#include <QFont>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
-#include <QProgressBar>
-#include <QPushButton>
-#include <QScrollArea>
+#include <QLinearGradient>
+#include <QPainter>
+#include <QPainterPath>
+#include <QPixmap>
+#include <QSizePolicy>
+#include <QStackedWidget>
+#include <QTimer>
 #include <QVBoxLayout>
 
 namespace {
-QFrame *createInfoCard(const QString &title,
-                       const QString &body,
-                       const QString &buttonText = QString(),
-                       const QString &buttonObjectName = QStringLiteral("secondaryButton"))
+
+class SlideCanvas final : public QWidget
 {
-    QFrame *card = new QFrame;
-    card->setObjectName("infoCard");
-    card->setMinimumHeight(140);
-
-    QVBoxLayout *layout = new QVBoxLayout(card);
-    layout->setContentsMargins(16, 14, 16, 14);
-    layout->setSpacing(8);
-
-    QLabel *titleLabel = new QLabel(title);
-    titleLabel->setObjectName("cardTitle");
-
-    QLabel *bodyLabel = new QLabel(body);
-    bodyLabel->setObjectName("cardSubText");
-    bodyLabel->setWordWrap(true);
-
-    layout->addWidget(titleLabel);
-    layout->addWidget(bodyLabel);
-    layout->addStretch();
-
-    if (!buttonText.isEmpty()) {
-        QPushButton *button = new QPushButton(buttonText);
-        button->setObjectName(buttonObjectName);
-        button->setCursor(Qt::PointingHandCursor);
-        button->setFixedHeight(34);
-        layout->addWidget(button);
+public:
+    SlideCanvas(const QString &resourcePath,
+                const QString &title,
+                const QString &description,
+                QWidget *parent = nullptr)
+        : QWidget(parent)
+        , pixmap(resourcePath)
+        , title(title)
+        , description(description)
+    {
+        setMinimumHeight(420);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+        setAccessibleName(title);
     }
 
-    return card;
-}
-}
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
+
+        const QRect canvas = rect().adjusted(1, 1, -1, -1);
+        QPainterPath clipPath;
+        clipPath.addRoundedRect(QRectF(canvas), 14.0, 14.0);
+        painter.setClipPath(clipPath);
+        painter.fillRect(canvas, QColor("#07131f"));
+
+        if (pixmap.isNull()) {
+            painter.setPen(QColor("#dbeafe"));
+            painter.drawText(canvas, Qt::AlignCenter,
+                             QStringLiteral("首页展示图片加载失败"));
+            return;
+        }
+
+        QSize scaledSize = pixmap.size();
+        scaledSize.scale(canvas.size(), Qt::KeepAspectRatio);
+        const QRect imageRect(
+            canvas.left() + (canvas.width() - scaledSize.width()) / 2,
+            canvas.top() + (canvas.height() - scaledSize.height()) / 2,
+            scaledSize.width(), scaledSize.height());
+        painter.drawPixmap(imageRect, pixmap);
+
+        const int overlayHeight = qMin(190, qMax(128, imageRect.height() / 3));
+        const QRect overlayRect(imageRect.left(),
+                                imageRect.bottom() - overlayHeight + 1,
+                                imageRect.width(), overlayHeight);
+        QLinearGradient overlay(overlayRect.topLeft(), overlayRect.bottomLeft());
+        overlay.setColorAt(0.0, QColor(5, 18, 32, 0));
+        overlay.setColorAt(0.45, QColor(5, 18, 32, 150));
+        overlay.setColorAt(1.0, QColor(5, 18, 32, 235));
+        painter.fillRect(overlayRect, overlay);
+
+        const int horizontalPadding = qMax(26, imageRect.width() / 32);
+        QFont titleFont(QStringLiteral("Microsoft YaHei"));
+        titleFont.setPixelSize(qMax(24, qMin(36, imageRect.width() / 42)));
+        titleFont.setBold(true);
+        painter.setFont(titleFont);
+        painter.setPen(Qt::white);
+        const QRect titleRect = overlayRect.adjusted(
+            horizontalPadding, overlayHeight / 4, -horizontalPadding, -62);
+        painter.drawText(titleRect, Qt::AlignLeft | Qt::AlignBottom, title);
+
+        QFont descriptionFont(QStringLiteral("Microsoft YaHei"));
+        descriptionFont.setPixelSize(qMax(13, qMin(18, imageRect.width() / 78)));
+        painter.setFont(descriptionFont);
+        painter.setPen(QColor("#d7e8f7"));
+        const QRect descriptionRect = overlayRect.adjusted(
+            horizontalPadding, overlayHeight - 58, -horizontalPadding, -18);
+        painter.drawText(descriptionRect,
+                         Qt::AlignLeft | Qt::AlignVCenter | Qt::TextWordWrap,
+                         description);
+    }
+
+private:
+    QPixmap pixmap;
+    QString title;
+    QString description;
+};
+
+} // namespace
 
 HomePage::HomePage(QWidget *parent)
     : QWidget(parent)
@@ -54,112 +108,94 @@ HomePage::HomePage(QWidget *parent)
 void HomePage::initUI()
 {
     QVBoxLayout *rootLayout = new QVBoxLayout(this);
-    rootLayout->setContentsMargins(0, 0, 0, 0);
+    rootLayout->setContentsMargins(16, 14, 16, 14);
+    rootLayout->setSpacing(0);
 
-    QScrollArea *scrollArea = new QScrollArea(this);
-    scrollArea->setWidgetResizable(true);
-    scrollArea->setFrameShape(QFrame::NoFrame);
-    scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    QFrame *display = new QFrame(this);
+    display->setObjectName(QStringLiteral("homeDisplay"));
+    QVBoxLayout *displayLayout = new QVBoxLayout(display);
+    displayLayout->setContentsMargins(0, 0, 0, 0);
+    displayLayout->setSpacing(0);
 
-    QWidget *content = new QWidget;
-    QVBoxLayout *layout = new QVBoxLayout(content);
-    layout->setContentsMargins(16, 14, 16, 14);
-    layout->setSpacing(12);
+    QFrame *screenHeader = new QFrame(display);
+    screenHeader->setObjectName(QStringLiteral("homeScreenHeader"));
+    screenHeader->setFixedHeight(58);
+    QHBoxLayout *headerLayout = new QHBoxLayout(screenHeader);
+    headerLayout->setContentsMargins(22, 0, 22, 0);
 
-    QFrame *heroCard = new QFrame;
-    heroCard->setObjectName("displayCard");
-    heroCard->setMinimumHeight(320);
+    QLabel *screenTitle = new QLabel(
+        QStringLiteral("水污染在线监测与智能分析平台"), screenHeader);
+    screenTitle->setObjectName(QStringLiteral("homeScreenTitle"));
+    QLabel *screenState = new QLabel(
+        QStringLiteral("●  监测场景自动轮播"), screenHeader);
+    screenState->setObjectName(QStringLiteral("homeScreenState"));
+    headerLayout->addWidget(screenTitle);
+    headerLayout->addStretch();
+    headerLayout->addWidget(screenState);
 
-    QVBoxLayout *heroLayout = new QVBoxLayout(heroCard);
-    heroLayout->setContentsMargins(0, 0, 0, 0);
-    heroLayout->setSpacing(0);
+    slideStack = new QStackedWidget(display);
+    slideStack->setObjectName(QStringLiteral("homeSlideStack"));
+    slideStack->addWidget(new SlideCanvas(
+        QStringLiteral(":/images/monitoring_equipment.png"),
+        QStringLiteral("在线监测设备与数据采集平台"),
+        QStringLiteral("自动采样、在线分析与数据采集设备组成现场水质监测系统。"),
+        slideStack));
+    slideStack->addWidget(new SlideCanvas(
+        QStringLiteral(":/images/monitoring_area_map.png"),
+        QStringLiteral("污染监测区域与企业分布"),
+        QStringLiteral("展示监测范围、企业位置与污染溯源分析所覆盖的重点区域。"),
+        slideStack));
 
-    QFrame *noticeBar = new QFrame;
-    noticeBar->setObjectName("noticeBar");
-    noticeBar->setFixedHeight(42);
+    QFrame *screenFooter = new QFrame(display);
+    screenFooter->setObjectName(QStringLiteral("homeScreenFooter"));
+    screenFooter->setFixedHeight(48);
+    QHBoxLayout *footerLayout = new QHBoxLayout(screenFooter);
+    footerLayout->setContentsMargins(22, 0, 22, 0);
 
-    QHBoxLayout *noticeLayout = new QHBoxLayout(noticeBar);
-    noticeLayout->setContentsMargins(14, 0, 14, 0);
+    QLabel *runtimeState = new QLabel(
+        QStringLiteral("●  现场监测画面"), screenFooter);
+    runtimeState->setObjectName(QStringLiteral("homeRuntimeState"));
+    slideIndicator = new QLabel(screenFooter);
+    slideIndicator->setObjectName(QStringLiteral("homeSlideIndicator"));
+    slideIndicator->setAlignment(Qt::AlignCenter);
+    slideCounter = new QLabel(screenFooter);
+    slideCounter->setObjectName(QStringLiteral("homeSlideCounter"));
+    slideCounter->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    slideCounter->setMinimumWidth(64);
 
-    QLabel *noticeLabel = new QLabel("当前已切换到 C++ Muduo API，数据与模型能力将通过统一 HTTP 接口提供。");
-    noticeLabel->setObjectName("noticeLabel");
-    noticeLayout->addWidget(noticeLabel);
+    footerLayout->addWidget(runtimeState);
+    footerLayout->addStretch();
+    footerLayout->addWidget(slideIndicator);
+    footerLayout->addStretch();
+    footerLayout->addWidget(slideCounter);
 
-    QFrame *overviewArea = new QFrame;
-    overviewArea->setObjectName("mapArea");
+    displayLayout->addWidget(screenHeader);
+    displayLayout->addWidget(slideStack, 1);
+    displayLayout->addWidget(screenFooter);
+    rootLayout->addWidget(display, 1);
 
-    QVBoxLayout *overviewLayout = new QVBoxLayout(overviewArea);
-    overviewLayout->setContentsMargins(24, 24, 24, 24);
-    overviewLayout->setSpacing(14);
+    showSlide(0);
+    slideTimer = new QTimer(this);
+    slideTimer->setInterval(6000);
+    connect(slideTimer, &QTimer::timeout, this, [this]() {
+        showSlide(currentSlide + 1);
+    });
+    slideTimer->start();
+}
 
-    QLabel *overviewTitle = new QLabel("主展示区域");
-    overviewTitle->setObjectName("mapPlaceholder");
-    overviewTitle->setAlignment(Qt::AlignCenter);
+void HomePage::showSlide(int index)
+{
+    if (!slideStack || slideStack->count() == 0) {
+        return;
+    }
 
-    QLabel *overviewBody = new QLabel(
-        "1. 监测点总览\n"
-        "2. 溯源结果总览\n"
-        "3. 预测趋势图\n"
-        "4. 告警与任务状态");
-    overviewBody->setObjectName("cardSubText");
-    overviewBody->setAlignment(Qt::AlignCenter);
-    overviewBody->setWordWrap(true);
-
-    overviewLayout->addStretch();
-    overviewLayout->addWidget(overviewTitle);
-    overviewLayout->addWidget(overviewBody);
-    overviewLayout->addStretch();
-
-    heroLayout->addWidget(noticeBar);
-    heroLayout->addWidget(overviewArea, 1);
-
-    QFrame *taskCard = new QFrame;
-    taskCard->setObjectName("infoCard");
-
-    QVBoxLayout *taskLayout = new QVBoxLayout(taskCard);
-    taskLayout->setContentsMargins(16, 12, 16, 12);
-    taskLayout->setSpacing(8);
-
-    QLabel *taskTitle = new QLabel("系统进度");
-    taskTitle->setObjectName("cardTitle");
-
-    QLabel *taskDesc = new QLabel("数据概览、污染溯源与趋势预测接口代码已完成；待在 Linux 导出并部署两类 ONNX 模型，完成实机联调和日志持久化。");
-    taskDesc->setObjectName("cardSubText");
-    taskDesc->setWordWrap(true);
-
-    QProgressBar *progressBar = new QProgressBar;
-    progressBar->setObjectName("taskProgress");
-    progressBar->setRange(0, 100);
-    progressBar->setValue(55);
-    progressBar->setTextVisible(false);
-    progressBar->setFixedHeight(10);
-
-    QPushButton *startButton = new QPushButton("继续开发");
-    startButton->setObjectName("primaryButton");
-    startButton->setCursor(Qt::PointingHandCursor);
-    startButton->setFixedHeight(34);
-
-    taskLayout->addWidget(taskTitle);
-    taskLayout->addWidget(progressBar);
-    taskLayout->addWidget(taskDesc);
-    taskLayout->addWidget(startButton);
-
-    QHBoxLayout *bottomCards = new QHBoxLayout;
-    bottomCards->setSpacing(12);
-    bottomCards->addWidget(createInfoCard("数据管线",
-                                          "本地 CSV 导入、预处理结果预览与数据库写回将在数据页面统一管理。",
-                                          "查看数据计划"));
-    bottomCards->addWidget(createInfoCard("模型服务",
-                                          "溯源使用 Random Forest，预测使用120条历史的 Attention-LSTM；需导出模型后进行 Linux 实机验证。",
-                                          "查看模型计划"));
-    bottomCards->addWidget(createInfoCard("测试与部署",
-                                          "接口测试、压测、部署验证可以在功能跑通后逐步补齐。",
-                                          "查看清单"));
-
-    layout->addWidget(heroCard, 1);
-    layout->addWidget(taskCard);
-    layout->addLayout(bottomCards);
-
-    scrollArea->setWidget(content);
-    rootLayout->addWidget(scrollArea);
+    const int count = slideStack->count();
+    currentSlide = ((index % count) + count) % count;
+    slideStack->setCurrentIndex(currentSlide);
+    slideIndicator->setText(currentSlide == 0
+        ? QStringLiteral("●    ○")
+        : QStringLiteral("○    ●"));
+    slideCounter->setText(QStringLiteral("%1 / %2")
+        .arg(currentSlide + 1)
+        .arg(count));
 }

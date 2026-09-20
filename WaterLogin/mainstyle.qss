@@ -171,3 +171,69 @@ QPushButton#secondaryButton {
 QPushButton#secondaryButton:hover {
     background: #e3ecff;
 }
+
+/* Home-page hall display */
+QFrame#homeDisplay {
+    background: #07131f;
+    border: 1px solid #1d3b55;
+    border-radius: 16px;
+}
+
+QFrame#homeScreenHeader {
+    background: #0b1d2d;
+    border: none;
+    border-bottom: 1px solid #1b405c;
+    border-top-left-radius: 16px;
+    border-top-right-radius: 16px;
+}
+
+QLabel#homeScreenTitle {
+    background: transparent;
+    color: #f1f7fc;
+    font-size: 20px;
+    font-weight: bold;
+}
+
+QLabel#homeScreenState {
+    background: #102b3f;
+    color: #5ee6b2;
+    border: 1px solid #1c4b64;
+    border-radius: 13px;
+    padding: 5px 12px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+QStackedWidget#homeSlideStack {
+    background: #07131f;
+    border: none;
+}
+
+QFrame#homeScreenFooter {
+    background: #0b1d2d;
+    border: none;
+    border-top: 1px solid #1b405c;
+    border-bottom-left-radius: 16px;
+    border-bottom-right-radius: 16px;
+}
+
+QLabel#homeRuntimeState {
+    background: transparent;
+    color: #5ee6b2;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+QLabel#homeSlideIndicator {
+    background: transparent;
+    color: #60a5fa;
+    font-size: 17px;
+    font-weight: bold;
+}
+
+QLabel#homeSlideCounter {
+    background: transparent;
+    color: #a9bfd2;
+    font-size: 12px;
+    font-weight: 600;
+}

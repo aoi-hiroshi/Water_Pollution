@@ -2,5 +2,7 @@
     <qresource prefix="/">
         <file>mainstyle.qss</file>
         <file>loginstyle.qss</file>
+        <file alias="images/monitoring_equipment.png">assets/monitoring_equipment.png</file>
+        <file alias="images/monitoring_area_map.png">assets/monitoring_area_map.png</file>
     </qresource>
 </RCC>
