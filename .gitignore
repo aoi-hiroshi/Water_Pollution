@@ -17,3 +17,6 @@ server/build*/
 *.a
 *.lib
 *.pdb
+
+# Microsoft Word temporary lock files
+~$*.docx
