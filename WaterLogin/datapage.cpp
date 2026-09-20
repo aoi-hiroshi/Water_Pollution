@@ -8,6 +8,7 @@
 #include <QComboBox>
 #include <QFrame>
 #include <QFileDialog>
+#include <QFont>
 #include <QSpinBox>
 #include <QDoubleSpinBox>
 #include <QDialog>
@@ -34,6 +35,7 @@
 #include <QVector>
 
 #include <algorithm>
+#include <cmath>
 #include <climits>
 #include <initializer_list>
 
@@ -407,22 +409,81 @@ void DataPage::renderOverviewChart(const QJsonArray &previewRows)
     struct Feature {
         const char *field;
         const char *label;
+        const char *unit;
     };
     const Feature features[] = {
-        {"temperature", "水温"}, {"ph", "pH"}, {"cod", "COD"},
-        {"nh3n", "氨氮"}, {"tp", "总磷"}, {"water_level", "液位"},
-        {"orp", "ORP"}, {"conductivity", "电导率"},
-        {"dissolved_oxygen", "溶解氧"}, {"turbidity", "浊度"}
+        {"temperature", "水温", "°C"}, {"ph", "pH", "-"},
+        {"cod", "COD", "mg/L"}, {"nh3n", "氨氮", "mg/L"},
+        {"tp", "总磷", "mg/L"}, {"water_level", "液位", "-"},
+        {"orp", "ORP", "mV"}, {"conductivity", "电导率", "μS/cm"},
+        {"dissolved_oxygen", "溶解氧", "mg/L"},
+        {"turbidity", "浊度", "-"}
     };
 
-    QPixmap canvas(1200, 560);
-    canvas.fill(QColor(QStringLiteral("#F8FAFC")));
+    const auto axisText = [](double value, double span) {
+        const double magnitude = std::abs(value);
+        if (magnitude >= 10000.0) {
+            return QString::number(value / 1000.0, 'f', 1) + QStringLiteral("k");
+        }
+        if (magnitude >= 1000.0) {
+            return QString::number(value, 'f', 0);
+        }
+        if (span < 1.0) {
+            return QString::number(value, 'f', 2);
+        }
+        if (span < 20.0) {
+            return QString::number(value, 'f', 1);
+        }
+        return QString::number(value, 'f', 0);
+    };
+
+    QPixmap canvas(1800, 720);
+    canvas.fill(Qt::white);
     QPainter painter(&canvas);
     painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.setRenderHint(QPainter::TextAntialiasing, true);
+
+    QFont titleFont(QStringLiteral("Microsoft YaHei"), 17, QFont::DemiBold);
+    QFont featureFont(QStringLiteral("Microsoft YaHei"), 11, QFont::DemiBold);
+    QFont axisFont(QStringLiteral("Microsoft YaHei"), 8);
+    painter.setFont(titleFont);
+    painter.setPen(QColor(QStringLiteral("#172033")));
+    painter.drawText(QRect(32, 10, canvas.width() - 64, 34),
+                     Qt::AlignCenter,
+                     QStringLiteral("十项水质指标预览趋势"));
+
+    painter.setFont(axisFont);
+    painter.setPen(QColor(QStringLiteral("#64748B")));
+    painter.drawText(QRect(34, 40, canvas.width() - 68, 22),
+                     Qt::AlignLeft | Qt::AlignVCenter,
+                     QStringLiteral("当前数据集前 %1 条样本 · 横轴为数据库样本 ID")
+                         .arg(previewRows.size()));
+    const QRectF legendLine(canvas.width() - 170, 50, 30, 0);
+    painter.setPen(QPen(QColor(QStringLiteral("#2F80ED")), 3));
+    painter.drawLine(legendLine.topLeft(), legendLine.topRight());
+    painter.setPen(QColor(QStringLiteral("#475569")));
+    painter.drawText(QRect(canvas.width() - 132, 38, 100, 24),
+                     Qt::AlignLeft | Qt::AlignVCenter,
+                     QStringLiteral("原始数据"));
 
     const int columns = 5;
-    const int cellWidth = canvas.width() / columns;
-    const int cellHeight = canvas.height() / 2;
+    const int rows = 2;
+    const int outerMargin = 28;
+    const int horizontalGap = 16;
+    const int verticalGap = 18;
+    const int contentTop = 70;
+    const int cellWidth = (canvas.width() - outerMargin * 2
+                           - horizontalGap * (columns - 1)) / columns;
+    const int cellHeight = (canvas.height() - contentTop - outerMargin
+                            - verticalGap * (rows - 1)) / rows;
+
+    const QJsonObject firstRow = previewRows.first().toObject();
+    const QJsonObject lastRow = previewRows.last().toObject();
+    const QString firstId = QString::number(
+        firstRow.value(QStringLiteral("id")).toVariant().toLongLong());
+    const QString lastId = QString::number(
+        lastRow.value(QStringLiteral("id")).toVariant().toLongLong());
+
     for (int featureIndex = 0; featureIndex < 10; ++featureIndex) {
         QVector<double> values;
         for (const QJsonValue &rowValue : previewRows) {
@@ -435,18 +496,29 @@ void DataPage::renderOverviewChart(const QJsonArray &previewRows)
 
         const int column = featureIndex % columns;
         const int row = featureIndex / columns;
-        const QRect cell(column * cellWidth, row * cellHeight,
-                         cellWidth, cellHeight);
-        const QRectF plot = QRectF(cell).adjusted(36, 34, -18, -28);
+        const QRect cell(
+            outerMargin + column * (cellWidth + horizontalGap),
+            contentTop + row * (cellHeight + verticalGap),
+            cellWidth, cellHeight);
+        const QRectF plot = QRectF(cell).adjusted(58, 48, -16, -42);
 
-        painter.setPen(QColor(QStringLiteral("#334155")));
-        painter.drawText(QRect(cell.left(), cell.top() + 7, cell.width(), 24),
+        painter.setPen(QPen(QColor(QStringLiteral("#D7E0EA")), 1));
+        painter.setBrush(QColor(QStringLiteral("#FFFFFF")));
+        painter.drawRoundedRect(QRectF(cell).adjusted(0.5, 0.5, -0.5, -0.5),
+                                8, 8);
+
+        painter.setFont(featureFont);
+        painter.setPen(QColor(QStringLiteral("#1E293B")));
+        painter.drawText(QRect(cell.left() + 12, cell.top() + 9,
+                               cell.width() - 24, 27),
                          Qt::AlignCenter,
-                         QString::fromUtf8(features[featureIndex].label));
-        painter.setPen(QPen(QColor(QStringLiteral("#CBD5E1")), 1));
-        painter.drawRect(plot);
+                         QStringLiteral("%1 (%2)")
+                             .arg(QString::fromUtf8(features[featureIndex].label),
+                                  QString::fromUtf8(features[featureIndex].unit)));
 
         if (values.isEmpty()) {
+            painter.setFont(axisFont);
+            painter.setPen(QColor(QStringLiteral("#94A3B8")));
             painter.drawText(plot, Qt::AlignCenter, QStringLiteral("暂无数据"));
             continue;
         }
@@ -458,27 +530,72 @@ void DataPage::renderOverviewChart(const QJsonArray &previewRows)
             minimum -= 0.5;
             maximum += 0.5;
         }
+        const double rawSpan = maximum - minimum;
+        const double padding = std::max(rawSpan * 0.08, 0.001);
+        minimum -= padding;
+        maximum += padding;
+        const double span = maximum - minimum;
+
+        painter.setFont(axisFont);
+        for (int tick = 0; tick <= 4; ++tick) {
+            const double ratio = tick / 4.0;
+            const double y = plot.bottom() - ratio * plot.height();
+            painter.setPen(QPen(QColor(QStringLiteral("#E7ECF2")), 1));
+            painter.drawLine(QPointF(plot.left(), y), QPointF(plot.right(), y));
+            painter.setPen(QColor(QStringLiteral("#64748B")));
+            painter.drawText(QRectF(cell.left() + 3, y - 9, 49, 18),
+                             Qt::AlignRight | Qt::AlignVCenter,
+                             axisText(minimum + ratio * span, span));
+        }
+        for (int tick = 0; tick <= 4; ++tick) {
+            const double x = plot.left() + tick * plot.width() / 4.0;
+            painter.setPen(QPen(QColor(QStringLiteral("#EEF2F6")), 1));
+            painter.drawLine(QPointF(x, plot.top()), QPointF(x, plot.bottom()));
+        }
+        painter.setPen(QPen(QColor(QStringLiteral("#AAB7C5")), 1));
+        painter.drawLine(plot.bottomLeft(), plot.bottomRight());
+        painter.drawLine(plot.topLeft(), plot.bottomLeft());
 
         QPainterPath path;
-        bool connected=false;
-        painter.setPen(QPen(QColor(QStringLiteral("#2F80ED")), 2));
+        bool connected = false;
         for (int index = 0; index < previewRows.size(); ++index) {
-            const auto value=previewRows.at(index).toObject().value(QLatin1String(features[featureIndex].field));
-            if (!value.isDouble()) { connected=false; continue; }
+            const auto value = previewRows.at(index).toObject().value(
+                QLatin1String(features[featureIndex].field));
+            if (!value.isDouble()) {
+                connected = false;
+                continue;
+            }
             const double xRatio = previewRows.size() == 1
                 ? 0.5 : static_cast<double>(index) / (previewRows.size() - 1);
-            const double yRatio = (value.toDouble() - minimum) /
-                                  (maximum - minimum);
-            const QPointF point(plot.left() + xRatio * plot.width(),plot.bottom() - yRatio * plot.height());
-            if (connected) path.lineTo(point); else path.moveTo(point);
-            connected=true; painter.drawEllipse(point,2,2);
+            const double yRatio = (value.toDouble() - minimum) / span;
+            const QPointF point(plot.left() + xRatio * plot.width(),
+                                plot.bottom() - yRatio * plot.height());
+            if (connected) {
+                path.lineTo(point);
+            } else {
+                path.moveTo(point);
+            }
+            connected = true;
         }
+
+        painter.save();
+        painter.setClipRect(plot.adjusted(-2, -2, 2, 2));
+        painter.setPen(QPen(QColor(QStringLiteral("#2F80ED")), 2.4,
+                            Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
         painter.drawPath(path);
+        painter.restore();
+
+        painter.setFont(axisFont);
         painter.setPen(QColor(QStringLiteral("#64748B")));
-        painter.drawText(QRectF(plot.left(), plot.bottom() + 4,
-                                plot.width(), 18),
-                         Qt::AlignCenter,
-                         QStringLiteral("%1 个预览样本（空值断开）").arg(previewRows.size()));
+        painter.drawText(QRectF(plot.left() - 8, plot.bottom() + 5,
+                                plot.width() + 16, 18),
+                         Qt::AlignLeft | Qt::AlignVCenter, firstId);
+        painter.drawText(QRectF(plot.left() - 8, plot.bottom() + 5,
+                                plot.width() + 16, 18),
+                         Qt::AlignRight | Qt::AlignVCenter, lastId);
+        painter.drawText(QRectF(plot.left(), plot.bottom() + 21,
+                                plot.width(), 17),
+                         Qt::AlignCenter, QStringLiteral("样本 ID"));
     }
     painter.end();
 
@@ -630,12 +747,12 @@ void DataPage::initUI()
     modeLayout->addWidget(modeTitle);
     modeLayout->addWidget(modeStackedWidget);
 
-    QHBoxLayout *bottomLayout = new QHBoxLayout;
+    QVBoxLayout *bottomLayout = new QVBoxLayout;
     bottomLayout->setSpacing(12);
 
     QFrame *chartCard = new QFrame;
     chartCard->setObjectName("displayCard");
-    chartCard->setMinimumHeight(320);
+    chartCard->setMinimumHeight(680);
 
     QVBoxLayout *chartLayout = new QVBoxLayout(chartCard);
     chartLayout->setContentsMargins(0, 0, 0, 0);
@@ -648,30 +765,28 @@ void DataPage::initUI()
     QHBoxLayout *noticeLayout = new QHBoxLayout(noticeBar);
     noticeLayout->setContentsMargins(14, 0, 14, 0);
 
-    QLabel *noticeLabel = new QLabel(QStringLiteral("图像展示区：Qt 根据 Muduo 返回的预览序列绘制十特征曲线。"));
+    QLabel *noticeLabel = new QLabel(QStringLiteral("图像展示区：Qt 根据 Muduo 返回的 50 条预览序列，绘制十项水质指标趋势。"));
     noticeLabel->setObjectName("noticeLabel");
     noticeLayout->addWidget(noticeLabel);
 
     QFrame *chartArea = new QFrame;
     chartArea->setObjectName("mapArea");
     QVBoxLayout *chartAreaLayout = new QVBoxLayout(chartArea);
-    chartAreaLayout->setContentsMargins(24, 24, 24, 24);
+    chartAreaLayout->setContentsMargins(14, 14, 14, 14);
 
     chartPlaceholderLabel = new QLabel;
     chartPlaceholderLabel->setObjectName("mapPlaceholder");
     chartPlaceholderLabel->setAlignment(Qt::AlignCenter);
     chartPlaceholderLabel->setWordWrap(true);
-    chartPlaceholderLabel->setMinimumSize(640, 360);
+    chartPlaceholderLabel->setMinimumSize(900, 600);
 
-    chartAreaLayout->addStretch();
-    chartAreaLayout->addWidget(chartPlaceholderLabel);
-    chartAreaLayout->addStretch();
+    chartAreaLayout->addWidget(chartPlaceholderLabel, 1);
 
     chartLayout->addWidget(noticeBar);
     chartLayout->addWidget(chartArea, 1);
 
     QFrame *resultCard = createInfoCardFrame();
-    resultCard->setMinimumWidth(360);
+    resultCard->setMinimumHeight(150);
     QVBoxLayout *resultLayout = new QVBoxLayout(resultCard);
     resultLayout->setContentsMargins(16, 14, 16, 14);
     resultLayout->setSpacing(8);
@@ -688,8 +803,8 @@ void DataPage::initUI()
     resultLayout->addWidget(resultSummaryLabel);
     resultLayout->addStretch();
 
-    bottomLayout->addWidget(chartCard, 2);
-    bottomLayout->addWidget(resultCard, 1);
+    bottomLayout->addWidget(chartCard);
+    bottomLayout->addWidget(resultCard);
 
     layout->addWidget(controlCard);
     layout->addWidget(previewCard);
@@ -777,7 +892,7 @@ void DataPage::loadOverviewData()
     currentChartPixmap = QPixmap();
     resultSummaryLabel->setText(QStringLiteral("正在加载统计摘要..."));
 
-    dataService->fetchOverview(companyId, datasetComboBox->currentData().toString(), 10);
+    dataService->fetchOverview(companyId, datasetComboBox->currentData().toString(), 50);
 }
 
 void DataPage::handleCompanyListReady(const QJsonArray &companies)
