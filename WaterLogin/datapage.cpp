@@ -984,7 +984,9 @@ void DataPage::handleOverviewReady(const QJsonObject &overview)
     const QJsonArray previewRows = overview.value(QStringLiteral("preview_rows")).toArray();
     populatePreviewTable(previewRows);
     renderOverviewSummary(overview);
-    renderOverviewChart(previewRows);
+    renderOverviewChart(previewRows,
+                        QString::fromUtf8("十项水质指标预览趋势"),
+                        QString::fromUtf8("原始数据"));
     saveChartButton->setEnabled(!currentChartPixmap.isNull());
     AppLogger::instance().log(
         AppLogType::Task, AppLogLevel::Info,

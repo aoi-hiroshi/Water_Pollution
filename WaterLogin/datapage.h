@@ -47,8 +47,8 @@ private:
     void renderOverviewSummary(const QJsonObject &overview);
     void renderOverviewChart(
         const QJsonArray &previewRows,
-        const QString &title = QStringLiteral("十项水质指标预览趋势"),
-        const QString &seriesLabel = QStringLiteral("原始数据"));
+        const QString &title,
+        const QString &seriesLabel);
     void updateChartPixmap();
     void runClassification(QString operation, bool persist = false);
     void runForecastAnalysis(const QString &operation);
