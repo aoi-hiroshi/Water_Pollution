@@ -4,6 +4,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QNetworkAccessManager>
+#include <QNetworkProxy>
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QTimer>
@@ -17,6 +18,10 @@ ApiClient::ApiClient(QObject *parent)
     , baseUrl(QString::fromUtf8(qgetenv("WATER_API_BASE_URL")))
     , requestTimeoutMs(15000)
 {
+    // The Muduo API is a LAN service. Bypass the host's HTTP proxy so private
+    // addresses such as 192.168.x.x are not forwarded to an external gateway.
+    networkManager->setProxy(QNetworkProxy(QNetworkProxy::NoProxy));
+
     if (baseUrl.trimmed().isEmpty()) {
         baseUrl = QStringLiteral("http://127.0.0.1:8080");
     }
