@@ -20,6 +20,8 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QLabel>
+#include <QList>
+#include <QMap>
 #include <QMessageBox>
 #include <QPainter>
 #include <QPainterPath>
@@ -76,6 +78,7 @@ DataPage::DataPage(QWidget *parent)
     connect(dataService, &DataService::companyListReady, this, &DataPage::handleCompanyListReady);
     connect(dataService, &DataService::overviewReady, this, &DataPage::handleOverviewReady);
     connect(dataService, &DataService::classificationReady, this, &DataPage::handleClassificationReady);
+    connect(dataService, &DataService::forecastAnalysisReady, this, &DataPage::handleForecastReady);
     connect(dataService, &DataService::serviceError, this, &DataPage::handleServiceError);
 
     loadCompanyList();
@@ -250,19 +253,24 @@ QWidget *DataPage::createPredictionModeView()
 
     QWidget *function1Card = createFunctionCard(
         QStringLiteral("功能一：时序概览与序列检查"),
-        QStringLiteral("后续查看预测数据的时间连续性、样本长度与目标指标趋势。"),
+        QStringLiteral("检查采样索引连续性、时间戳覆盖率与目标指标趋势。"),
         QStringLiteral("查看时序概览"),
-        sequenceConfig);
+        sequenceConfig,
+        &sequenceButton);
 
     QWidget *function2Card = createFunctionCard(
         QStringLiteral("功能二：空值检测与插值修复"),
-        QStringLiteral("后续针对时序数据执行缺失检测与插值修复。"),
-        QStringLiteral("检测并修复空值"));
+        QStringLiteral("检测十项水质特征的缺失值，内部缺口线性插值，序列边缘使用最近有效值。"),
+        QStringLiteral("检测并修复空值"),
+        nullptr,
+        &forecastMissingButton);
 
     QWidget *function3Card = createFunctionCard(
         QStringLiteral("功能三：异常值平滑与滤波"),
-        QStringLiteral("后续对预测序列做平滑、异常点识别与滤波。"),
-        QStringLiteral("执行平滑处理"));
+        QStringLiteral("先插值修复，再使用只依赖当前及历史样本的因果移动平均完成平滑。"),
+        QStringLiteral("执行平滑处理"),
+        nullptr,
+        &smoothButton);
 
     QWidget *forecastConfig = new QWidget;
     QHBoxLayout *forecastConfigLayout = new QHBoxLayout(forecastConfig);
@@ -273,7 +281,7 @@ QWidget *DataPage::createPredictionModeView()
     forecastFeatureComboBox->addItems(QStringList() << QStringLiteral("COD")
                                                     << QStringLiteral("氨氮")
                                                     << QStringLiteral("总磷")
-                                                    << QStringLiteral("溶解氧"));
+                                                    << QStringLiteral("浊度"));
 
     forecastStepComboBox = new QComboBox;
     forecastStepComboBox->addItems(QStringList() << QStringLiteral("预测 6 步")
@@ -285,9 +293,10 @@ QWidget *DataPage::createPredictionModeView()
 
     QWidget *function4Card = createFunctionCard(
         QStringLiteral("功能四：预测数据分布与窗口预览"),
-        QStringLiteral("后续用于查看目标指标分布和滑动窗口切片结果。"),
+        QStringLiteral("按 Attention-LSTM 的 120 步输入长度计算可构造窗口，并预览目标指标分布。"),
         QStringLiteral("查看分布与窗口"),
-        forecastConfig);
+        forecastConfig,
+        &windowPreviewButton);
 
     QWidget *forecastCheckConfig = new QWidget;
     QHBoxLayout *forecastCheckLayout = new QHBoxLayout(forecastCheckConfig);
@@ -307,9 +316,10 @@ QWidget *DataPage::createPredictionModeView()
 
     QWidget *function5Card = createFunctionCard(
         QStringLiteral("功能五：预测前诊断分析"),
-        QStringLiteral("后续输出趋势、周期和平稳性等诊断结果，为预测建模做预检查。"),
+        QStringLiteral("输出趋势斜率、指定滞后自相关或前后半段均值/方差变化，作为建模预检查。"),
         QStringLiteral("生成诊断结果"),
-        forecastCheckConfig);
+        forecastCheckConfig,
+        &diagnosisButton);
 
     layout->addWidget(function1Card, 0, 0);
     layout->addWidget(function2Card, 0, 1);
@@ -329,15 +339,17 @@ void DataPage::updateModeDescription(int modeIndex)
         return;
     }
 
-    modeDescriptionLabel->setText(QStringLiteral("当前模式：预测数据预处理。后续接入 C++ ONNX Runtime 推理服务。"));
-    chartPlaceholderLabel->setText(QStringLiteral("预测模式图像展示区"));
-    resultSummaryLabel->setText(QStringLiteral("预测模式结果摘要将在后续接口接入后显示。"));
+    modeDescriptionLabel->setText(QStringLiteral("预测预处理：锁定公司7 → train/val/test → C++时序检查、插值、平滑、窗口与诊断。原始数据不覆盖。"));
+    chartPlaceholderLabel->setText(QStringLiteral("预测模式图像展示区\n\n请选择功能执行分析"));
+    resultSummaryLabel->setText(QStringLiteral("等待执行预测数据预处理。"));
 }
 
 void DataPage::populatePreviewTable(const QJsonArray &previewRows)
 {
     const QStringList headers = {
         QStringLiteral("ID"),
+        QStringLiteral("序列号"),
+        QStringLiteral("采样时间"),
         QStringLiteral("水温"),
         QStringLiteral("pH"),
         QStringLiteral("COD"),
@@ -359,6 +371,10 @@ void DataPage::populatePreviewTable(const QJsonArray &previewRows)
         const QJsonObject item = previewRows.at(row).toObject();
         QStringList values;
         values << QString::number(item.value(QStringLiteral("id")).toDouble(), 'f', 0);
+        values << (item.value(QStringLiteral("sample_index")).isDouble()
+                       ? QString::number(item.value(QStringLiteral("sample_index")).toDouble(), 'f', 0)
+                       : QStringLiteral("-"));
+        values << item.value(QStringLiteral("sampled_at")).toString(QStringLiteral("-"));
         const QStringList keys = {"temperature","ph","cod","nh3n","tp","water_level","orp",
                                   "conductivity","dissolved_oxygen","turbidity"};
         for (const auto &key : keys) {
@@ -398,7 +414,9 @@ void DataPage::renderOverviewSummary(const QJsonObject &overview)
     resultSummaryLabel->setText(lines.join(QStringLiteral("\n")));
 }
 
-void DataPage::renderOverviewChart(const QJsonArray &previewRows)
+void DataPage::renderOverviewChart(const QJsonArray &previewRows,
+                                   const QString &title,
+                                   const QString &seriesLabel)
 {
     if (previewRows.isEmpty()) {
         currentChartPixmap = QPixmap();
@@ -451,13 +469,13 @@ void DataPage::renderOverviewChart(const QJsonArray &previewRows)
     painter.setPen(QColor(QStringLiteral("#172033")));
     painter.drawText(QRect(32, 10, canvas.width() - 64, 34),
                      Qt::AlignCenter,
-                     QStringLiteral("十项水质指标预览趋势"));
+                     title);
 
     painter.setFont(axisFont);
     painter.setPen(QColor(QStringLiteral("#64748B")));
     painter.drawText(QRect(34, 40, canvas.width() - 68, 22),
                      Qt::AlignLeft | Qt::AlignVCenter,
-                     QStringLiteral("当前数据集前 %1 条样本 · 横轴为数据库样本 ID")
+                     QStringLiteral("当前结果 %1 个绘图点 · 横轴为数据库样本 ID")
                          .arg(previewRows.size()));
     const QRectF legendLine(canvas.width() - 170, 50, 30, 0);
     painter.setPen(QPen(QColor(QStringLiteral("#2F80ED")), 3));
@@ -465,7 +483,7 @@ void DataPage::renderOverviewChart(const QJsonArray &previewRows)
     painter.setPen(QColor(QStringLiteral("#475569")));
     painter.drawText(QRect(canvas.width() - 132, 38, 100, 24),
                      Qt::AlignLeft | Qt::AlignVCenter,
-                     QStringLiteral("原始数据"));
+                     seriesLabel);
 
     const int columns = 5;
     const int rows = 2;
@@ -822,6 +840,8 @@ void DataPage::initUI()
         chartPlaceholderLabel->setPixmap(QPixmap());
         modeStackedWidget->setCurrentIndex(index);
         updateModeDescription(index);
+        configureModeSelectors(index);
+        loadOverviewData();
     });
     connect(refreshButton, &QPushButton::clicked, this, &DataPage::loadOverviewData);
     connect(overviewButton, &QPushButton::clicked, this, &DataPage::loadOverviewData);
@@ -829,6 +849,11 @@ void DataPage::initUI()
     connect(cleanButton, &QPushButton::clicked, this, [this] { runClassification(QStringLiteral("clean")); });
     connect(distributionButton, &QPushButton::clicked, this, [this] { runClassification(QStringLiteral("distribution")); });
     connect(correlationButton, &QPushButton::clicked, this, [this] { runClassification(QStringLiteral("correlation")); });
+    connect(sequenceButton, &QPushButton::clicked, this, [this] { runForecastAnalysis(QStringLiteral("sequence")); });
+    connect(forecastMissingButton, &QPushButton::clicked, this, [this] { runForecastAnalysis(QStringLiteral("missing")); });
+    connect(smoothButton, &QPushButton::clicked, this, [this] { runForecastAnalysis(QStringLiteral("smooth")); });
+    connect(windowPreviewButton, &QPushButton::clicked, this, [this] { runForecastAnalysis(QStringLiteral("window")); });
+    connect(diagnosisButton, &QPushButton::clicked, this, [this] { runForecastAnalysis(QStringLiteral("diagnosis")); });
     connect(saveVersionButton, &QPushButton::clicked, this, [this] {
         if (previewOperation.isEmpty() || busy) return;
         QDialog confirmation(this);
@@ -847,18 +872,21 @@ void DataPage::initUI()
     });
     connect(saveChartButton, &QPushButton::clicked, this, [this] {
         if (currentChartPixmap.isNull()) return;
-        const QString path=QFileDialog::getSaveFileName(this,QStringLiteral("保存图像"),QStringLiteral("classification.png"),QStringLiteral("PNG (*.png)"));
+        const QString defaultName = taskModeComboBox->currentIndex() == 1
+            ? QStringLiteral("forecast_preprocessing.png")
+            : QStringLiteral("classification.png");
+        const QString path=QFileDialog::getSaveFileName(this,QStringLiteral("保存图像"),defaultName,QStringLiteral("PNG (*.png)"));
         if (!path.isEmpty() && !currentChartPixmap.save(path,"PNG"))
             QMessageBox::warning(this,QStringLiteral("图像导出"),QStringLiteral("保存失败，请检查路径权限。"));
     });
     connect(companyComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
-        if (index >= 0 && taskModeComboBox->currentIndex() == 0) {
+        if (index >= 0) {
             cleaningRunInput->setValue(0);
             loadOverviewData();
         }
     });
     connect(datasetComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
-        if (index >= 0 && taskModeComboBox->currentIndex() == 0) {
+        if (index >= 0) {
             cleaningRunInput->setValue(0);
             loadOverviewData();
         }
@@ -877,10 +905,6 @@ void DataPage::loadCompanyList()
 
 void DataPage::loadOverviewData()
 {
-    if (taskModeComboBox->currentIndex() != 0) {
-        return;
-    }
-
     const int companyId = companyComboBox->currentData().toInt();
     if (companyId <= 0) {
         return;
@@ -899,25 +923,58 @@ void DataPage::loadOverviewData()
 void DataPage::handleCompanyListReady(const QJsonArray &companies)
 {
     setBusy(false);
-    companyComboBox->blockSignals(true);
-    companyComboBox->clear();
+    this->companies = companies;
+    configureModeSelectors(taskModeComboBox->currentIndex());
 
-    for (const QJsonValue &value : companies) {
-        const QJsonObject company = value.toObject();
-        companyComboBox->addItem(company.value(QStringLiteral("company_name")).toString(),
-                                 company.value(QStringLiteral("company_id")).toInt());
-    }
-
-    if (companyComboBox->count() > 0) {
-        companyComboBox->setCurrentIndex(0);
-    } else {
-        companyComboBox->addItem(QStringLiteral("暂无公司数据"), -1);
-    }
-    companyComboBox->blockSignals(false);
-
-    if (companyComboBox->count() > 0) {
+    if (companyComboBox->currentData().toInt() > 0) {
         loadOverviewData();
     }
+}
+
+void DataPage::configureModeSelectors(int modeIndex)
+{
+    const bool forecastMode = modeIndex == 1;
+    companyComboBox->blockSignals(true);
+    datasetComboBox->blockSignals(true);
+
+    companyComboBox->clear();
+    for (const QJsonValue &value : companies) {
+        const QJsonObject company = value.toObject();
+        const int companyId = company.value(QStringLiteral("company_id")).toInt();
+        const QString taskType = company.value(QStringLiteral("task_type")).toString();
+        const bool include = forecastMode
+            ? companyId == 7
+            : (taskType == QStringLiteral("trace") ||
+               (taskType.isEmpty() && companyId != 7));
+        if (include) {
+            companyComboBox->addItem(
+                company.value(QStringLiteral("company_name")).toString(), companyId);
+        }
+    }
+    if (companyComboBox->count() == 0) {
+        companyComboBox->addItem(
+            forecastMode
+                ? QStringLiteral("未找到公司7：浙江海正药业股份有限公司岩头")
+                : QStringLiteral("暂无溯源公司数据"),
+            -1);
+    }
+
+    datasetComboBox->clear();
+    datasetComboBox->addItem(QStringLiteral("训练数据 train_data"), QStringLiteral("train_data"));
+    if (forecastMode) {
+        datasetComboBox->addItem(QStringLiteral("验证数据 val_data"), QStringLiteral("val_data"));
+    }
+    datasetComboBox->addItem(QStringLiteral("测试数据 test_data"), QStringLiteral("test_data"));
+
+    companyComboBox->setCurrentIndex(0);
+    datasetComboBox->setCurrentIndex(0);
+    companyComboBox->setEnabled(!busy && !forecastMode);
+    datasetComboBox->setEnabled(!busy);
+    cleaningRunInput->setEnabled(!busy && !forecastMode);
+    saveVersionButton->setEnabled(false);
+
+    companyComboBox->blockSignals(false);
+    datasetComboBox->blockSignals(false);
 }
 
 void DataPage::handleOverviewReady(const QJsonObject &overview)
@@ -954,11 +1011,26 @@ void DataPage::handleServiceError(const QString &message)
 void DataPage::setBusy(bool value)
 {
     busy=value;
-    for (QWidget *widget : std::initializer_list<QWidget*>{companyComboBox,datasetComboBox,taskModeComboBox,
+    const bool forecastMode = taskModeComboBox->currentIndex() == 1;
+    for (QWidget *widget : std::initializer_list<QWidget*>{datasetComboBox,taskModeComboBox,
          refreshButton,overviewButton,missingButton,cleanButton,distributionButton,correlationButton,
-         cleaningRunInput,windowInput,thresholdInput,distributionTypeComboBox,distributionFeatureComboBox,correlationMethodComboBox})
+         sequenceButton,forecastMissingButton,smoothButton,windowPreviewButton,diagnosisButton,
+         windowInput,thresholdInput,distributionTypeComboBox,distributionFeatureComboBox,correlationMethodComboBox,
+         sequenceFeatureComboBox,sequenceWindowComboBox,forecastFeatureComboBox,forecastStepComboBox,forecastCheckComboBox})
         widget->setEnabled(!value);
-    saveVersionButton->setEnabled(!value && !previewOperation.isEmpty());
+    companyComboBox->setEnabled(!value && !forecastMode);
+    cleaningRunInput->setEnabled(!value && !forecastMode);
+    overviewButton->setEnabled(!value && !forecastMode);
+    missingButton->setEnabled(!value && !forecastMode);
+    cleanButton->setEnabled(!value && !forecastMode);
+    distributionButton->setEnabled(!value && !forecastMode);
+    correlationButton->setEnabled(!value && !forecastMode);
+    sequenceButton->setEnabled(!value && forecastMode);
+    forecastMissingButton->setEnabled(!value && forecastMode);
+    smoothButton->setEnabled(!value && forecastMode);
+    windowPreviewButton->setEnabled(!value && forecastMode);
+    diagnosisButton->setEnabled(!value && forecastMode);
+    saveVersionButton->setEnabled(!value && !forecastMode && !previewOperation.isEmpty());
     saveChartButton->setEnabled(!value && !currentChartPixmap.isNull());
 }
 
@@ -1046,4 +1118,126 @@ void DataPage::handleClassificationReady(const QJsonObject &result)
             .arg(result.value(QStringLiteral("rule")).toString())
             .arg(result.value(QStringLiteral("sample_count")).toInt())
             .arg(persisted ? QStringLiteral("是") : QStringLiteral("否")));
+}
+
+void DataPage::runForecastAnalysis(const QString &operation)
+{
+    if (busy || taskModeComboBox->currentIndex() != 1 ||
+        companyComboBox->currentData().toInt() != 7) {
+        return;
+    }
+
+    const QStringList sequenceFields = {
+        QStringLiteral("cod"), QStringLiteral("nh3n"), QStringLiteral("tp"),
+        QStringLiteral("dissolved_oxygen"), QStringLiteral("turbidity")
+    };
+    const QStringList forecastFields = {
+        QStringLiteral("cod"), QStringLiteral("nh3n"),
+        QStringLiteral("tp"), QStringLiteral("turbidity")
+    };
+    const QList<int> windows = {12, 24, 48};
+    const QList<int> horizons = {6, 12, 24};
+    const QStringList diagnostics = {
+        QStringLiteral("trend"), QStringLiteral("seasonality"),
+        QStringLiteral("stationarity")
+    };
+
+    QJsonObject request;
+    request.insert(QStringLiteral("company_id"), 7);
+    request.insert(QStringLiteral("dataset"), datasetComboBox->currentData().toString());
+    request.insert(QStringLiteral("window"), windows.at(sequenceWindowComboBox->currentIndex()));
+    request.insert(QStringLiteral("horizon"), horizons.at(forecastStepComboBox->currentIndex()));
+    request.insert(QStringLiteral("diagnostic"), diagnostics.at(forecastCheckComboBox->currentIndex()));
+    request.insert(QStringLiteral("feature"),
+                   operation == QStringLiteral("sequence") ||
+                           operation == QStringLiteral("missing") ||
+                           operation == QStringLiteral("smooth")
+                       ? sequenceFields.at(sequenceFeatureComboBox->currentIndex())
+                       : forecastFields.at(forecastFeatureComboBox->currentIndex()));
+
+    setBusy(true);
+    chartPlaceholderLabel->setPixmap(QPixmap());
+    chartPlaceholderLabel->setText(QStringLiteral("正在执行预测数据预处理..."));
+    resultSummaryLabel->setText(
+        QStringLiteral("正在从 Muduo 请求 /api/v1/data/forecast/%1").arg(operation));
+    AppLogger::instance().log(
+        AppLogType::Task, AppLogLevel::Info,
+        QStringLiteral("预测数据预处理"),
+        QStringLiteral("执行 %1，公司7，数据集 %2")
+            .arg(operation, request.value(QStringLiteral("dataset")).toString()),
+        QStringLiteral("执行中"));
+    dataService->fetchForecastAnalysis(operation, request);
+}
+
+void DataPage::handleForecastReady(const QJsonObject &result)
+{
+    setBusy(false);
+    const QJsonArray preview = result.value(QStringLiteral("preview_after")).toArray();
+    QJsonArray chart = result.value(QStringLiteral("chart_after")).toArray();
+    if (chart.isEmpty()) {
+        chart = preview;
+    }
+    populatePreviewTable(preview);
+
+    const QString operation = result.value(QStringLiteral("operation")).toString();
+    const QMap<QString, QString> titles = {
+        {QStringLiteral("sequence"), QStringLiteral("预测数据时序连续性与指标趋势")},
+        {QStringLiteral("missing"), QStringLiteral("预测数据插值修复后趋势")},
+        {QStringLiteral("smooth"), QStringLiteral("预测数据因果移动平均后趋势")},
+        {QStringLiteral("window"), QStringLiteral("Attention-LSTM 滑动窗口数据趋势")},
+        {QStringLiteral("diagnosis"), QStringLiteral("预测前诊断指标趋势")}
+    };
+    const bool transformed = operation == QStringLiteral("missing") ||
+                             operation == QStringLiteral("smooth");
+    renderOverviewChart(chart, titles.value(operation, QStringLiteral("预测数据预处理结果")),
+                        transformed ? QStringLiteral("处理后序列")
+                                    : QStringLiteral("分析序列"));
+    saveChartButton->setEnabled(!currentChartPixmap.isNull());
+
+    const auto numberText = [](const QJsonValue &value) {
+        return value.isDouble() ? QString::number(value.toDouble(), 'g', 8)
+                                : QStringLiteral("NA");
+    };
+    QStringList lines;
+    lines << QStringLiteral("公司：%1（ID 7）")
+                 .arg(result.value(QStringLiteral("company_name")).toString());
+    lines << QStringLiteral("数据集：%1；操作：%2；样本：%3 条；规则：%4")
+                 .arg(result.value(QStringLiteral("dataset")).toString())
+                 .arg(operation)
+                 .arg(result.value(QStringLiteral("sample_count")).toVariant().toLongLong())
+                 .arg(result.value(QStringLiteral("rule")).toString());
+    for (const QJsonValue &value : result.value(QStringLiteral("metrics")).toArray()) {
+        const QJsonObject metric = value.toObject();
+        lines << QStringLiteral("%1：%2 %3")
+                     .arg(metric.value(QStringLiteral("label")).toString())
+                     .arg(numberText(metric.value(QStringLiteral("value"))))
+                     .arg(metric.value(QStringLiteral("text")).toString());
+    }
+    for (const QJsonValue &value : result.value(QStringLiteral("features")).toArray()) {
+        const QJsonObject feature = value.toObject();
+        const int missingBefore = feature.value(QStringLiteral("missing_before")).toInt();
+        const int changed = feature.value(QStringLiteral("changed_count")).toInt();
+        if (missingBefore > 0 || changed > 0) {
+            lines << QStringLiteral("%1：空值 %2→%3；修改 %4；均值 %5；标准差 %6")
+                         .arg(feature.value(QStringLiteral("label")).toString())
+                         .arg(missingBefore)
+                         .arg(feature.value(QStringLiteral("missing_after")).toInt())
+                         .arg(changed)
+                         .arg(numberText(feature.value(QStringLiteral("mean"))))
+                         .arg(numberText(feature.value(QStringLiteral("std"))));
+        }
+    }
+    for (const QJsonValue &warning : result.value(QStringLiteral("warnings")).toArray()) {
+        lines << QStringLiteral("提示：%1").arg(warning.toString());
+    }
+    lines << QStringLiteral("本次结果仅用于预览和诊断，没有覆盖数据库原始数据。");
+    resultSummaryLabel->setText(lines.join(QLatin1Char('\n')));
+
+    AppLogger::instance().log(
+        AppLogType::Task, AppLogLevel::Info,
+        QStringLiteral("预测数据预处理"),
+        QStringLiteral("%1 完成，数据集 %2，共 %3 条")
+            .arg(operation)
+            .arg(result.value(QStringLiteral("dataset")).toString())
+            .arg(result.value(QStringLiteral("sample_count")).toVariant().toLongLong()));
 }

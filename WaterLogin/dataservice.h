@@ -17,11 +17,13 @@ public:
     void fetchCompanyList();
     void fetchOverview(int companyId, const QString &datasetName, int limit = 10);
     void fetchClassification(const QString &operation, const QJsonObject &parameters);
+    void fetchForecastAnalysis(const QString &operation, const QJsonObject &parameters);
 
 signals:
     void companyListReady(const QJsonArray &companies);
     void overviewReady(const QJsonObject &overview);
     void classificationReady(const QJsonObject &result);
+    void forecastAnalysisReady(const QJsonObject &result);
     void serviceError(const QString &message);
 
 private slots:

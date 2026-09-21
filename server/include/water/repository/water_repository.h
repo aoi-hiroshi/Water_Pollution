@@ -51,6 +51,10 @@ public:
         db::DbConnection& connection, std::int64_t company_id,
         const std::string& dataset, std::int64_t end_sample_id,
         std::size_t lookback) const;
+
+    [[nodiscard]] std::vector<domain::WaterSample> loadForecastSamples(
+        db::DbConnection& connection, std::int64_t company_id,
+        const std::string& dataset, std::size_t row_limit) const;
 };
 
 }  // namespace water::repository

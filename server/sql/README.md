@@ -41,6 +41,6 @@ SOURCE server/sql/002_compatibility_views.sql;
 - `model_metrics`：分类或预测的通用性能指标。
 - `classification_results`：分类推理结果。
 - `forecast_runs` / `forecast_points`：一次预测及其 1～10 分钟预测点。
-- `train_data` / `test_data`：兼容现有 C++ 查询的只读视图，不是重复数据。
+- `train_data` / `val_data` / `test_data`：映射 `train` / `validation` / `test` 的只读兼容视图，不是重复数据；预测预处理使用三者，分类仍只使用训练集和测试集。
 
 运行期账号只需这些表的 `SELECT`、`INSERT` 权限；建表、迁移和删表使用单独的管理员账号。

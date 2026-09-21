@@ -74,6 +74,8 @@ Json sampleJson(const domain::WaterSample& sample) {
         {"dissolved_oxygen", nullable(sample.dissolved_oxygen)},
         {"turbidity", nullable(sample.turbidity)},
         {"company_id", sample.company_id},
+        {"sample_index", sample.sample_index},
+        {"sampled_at", nullable(sample.sampled_at)},
     };
 }
 
@@ -218,6 +220,44 @@ Json classificationDataJson(const domain::ClassificationDataResult& result,
         {"high_correlations",std::move(pairs)},{"warnings",result.warnings}};
 }
 
+Json forecastDataJson(const domain::ForecastDataResult& result,
+                      const domain::ForecastDataRequest& request) {
+    Json features = Json::array();
+    Json metrics = Json::array();
+    Json before = Json::array();
+    Json after = Json::array();
+    Json chart_before = Json::array();
+    Json chart_after = Json::array();
+    for (const auto& item : result.features) {
+        features.push_back(Json{{"field",item.field},{"label",item.label},{"unit",item.unit},
+            {"valid_count",item.valid_count},{"missing_before",item.missing_before},
+            {"missing_after",item.missing_after},{"filled_count",item.filled_count},
+            {"changed_count",item.changed_count},{"mean",nullable(item.mean)},
+            {"std",nullable(item.standard_deviation)},{"min",nullable(item.minimum)},
+            {"max",nullable(item.maximum)},{"q10",nullable(item.q10)},
+            {"q25",nullable(item.q25)},{"median",nullable(item.median)},
+            {"q75",nullable(item.q75)},{"q90",nullable(item.q90)}});
+    }
+    for (const auto& item : result.metrics) {
+        metrics.push_back(Json{{"key",item.key},{"label",item.label},
+            {"value",nullable(item.value)},{"text",item.text}});
+    }
+    for (const auto& row : result.preview_before) { before.push_back(sampleJson(row)); }
+    for (const auto& row : result.preview_after) { after.push_back(sampleJson(row)); }
+    for (const auto& row : result.chart_before) { chart_before.push_back(sampleJson(row)); }
+    for (const auto& row : result.chart_after) { chart_after.push_back(sampleJson(row)); }
+    return Json{{"company_id",result.company_id},{"company_name",result.company_name},
+        {"dataset",result.dataset},{"operation",result.operation},{"rule",result.rule},
+        {"sample_count",result.sample_count},{"timestamp_count",result.timestamp_count},
+        {"sequence_gap_count",result.sequence_gap_count},{"axis","sample_index"},
+        {"parameters",Json{{"feature",request.feature},{"window",request.window},
+            {"horizon",request.horizon},{"diagnostic",request.diagnostic}}},
+        {"features",std::move(features)},{"metrics",std::move(metrics)},
+        {"preview_before",std::move(before)},{"preview_after",std::move(after)},
+        {"chart_before",std::move(chart_before)},{"chart_after",std::move(chart_after)},
+        {"warnings",result.warnings}};
+}
+
 template <typename Integer>
 std::optional<Integer> parseInteger(const std::string* text) {
     if (text == nullptr || text->empty()) {
@@ -238,9 +278,11 @@ std::optional<Integer> parseInteger(const std::string* text) {
 ApiController::ApiController(service::WaterService& service,
                              service::TraceService& trace_service,
                              service::ForecastService& forecast_service,
-                             service::ClassificationDataService* classification_service)
+                             service::ClassificationDataService* classification_service,
+                             service::ForecastDataService* forecast_data_service)
     : service_(service), trace_service_(trace_service), forecast_service_(forecast_service),
-      classification_service_(classification_service) {}
+      classification_service_(classification_service),
+      forecast_data_service_(forecast_data_service) {}
 
 void ApiController::registerRoutes(net::HttpRouter& router) {
     const auto add=[this,&router](bool post, const char* path, auto member) {
@@ -267,6 +309,82 @@ void ApiController::registerRoutes(net::HttpRouter& router) {
                 classificationData(operation,std::move(request),std::move(reply));
             });
     }
+    for (const std::string operation : {"sequence","missing","smooth","window","diagnosis"}) {
+        router.post("/api/v1/data/forecast/"+operation,
+            [this,operation](net::HttpRequest request,net::HttpReply reply) {
+                if (!accepting_.load()) {
+                    reply(failure(service::ServiceError{503,"SERVER_STOPPING","server is stopping"})); return;
+                }
+                forecastData(operation,std::move(request),std::move(reply));
+            });
+    }
+}
+
+void ApiController::forecastData(std::string operation, net::HttpRequest request,
+                                 net::HttpReply reply) {
+    domain::ForecastDataRequest options;
+    options.operation = std::move(operation);
+    try {
+        const auto body = Json::parse(request.body);
+        if (!body.is_object() || !body.contains("company_id")) {
+            reply(badRequest("JSON object with company_id is required")); return;
+        }
+        const std::set<std::string> allowed{
+            "company_id","dataset","feature","window","horizon","diagnostic"};
+        for (auto item=body.begin(); item!=body.end(); ++item) {
+            if (!allowed.contains(item.key())) {
+                reply(badRequest("unknown argument: "+item.key())); return;
+            }
+        }
+        const auto company_id = jsonInteger(body.at("company_id"));
+        if (!company_id || *company_id <= 0) {
+            reply(badRequest("company_id must be a positive int64")); return;
+        }
+        options.company_id = *company_id;
+        for (const auto& [key,destination] :
+             std::initializer_list<std::pair<const char*,std::string*>>{
+                 {"dataset",&options.dataset},{"feature",&options.feature},
+                 {"diagnostic",&options.diagnostic}}) {
+            if (body.contains(key)) {
+                if (!body.at(key).is_string()) {
+                    reply(badRequest(std::string{key}+" must be a string")); return;
+                }
+                *destination = body.at(key).get<std::string>();
+            }
+        }
+        for (const auto& [key,destination] :
+             std::initializer_list<std::pair<const char*,std::size_t*>>{
+                 {"window",&options.window},{"horizon",&options.horizon}}) {
+            if (body.contains(key)) {
+                const auto value = jsonInteger(body.at(key));
+                if (!value || *value < 0 || *value > 1440) {
+                    reply(badRequest(std::string{key}+" is out of range")); return;
+                }
+                *destination = static_cast<std::size_t>(*value);
+            }
+        }
+        analysis::validateForecastDataRequest(options);
+    } catch (const std::exception& error) {
+        reply(badRequest(error.what())); return;
+    }
+    if (!forecast_data_service_) {
+        reply(failure(service::ServiceError{
+            503,"ANALYSIS_UNAVAILABLE","forecast data service is not configured"})); return;
+    }
+    forecast_data_service_->execute(options,
+        [options,reply=std::move(reply)](service::ForecastDataResult result) mutable {
+            try {
+                if (const auto* error=std::get_if<service::ServiceError>(&result)) {
+                    reply(failure(*error)); return;
+                }
+                reply(success(forecastDataJson(
+                    std::get<domain::ForecastDataResult>(result),options),
+                    "forecast preprocessing completed"));
+            } catch (...) {
+                reply(failure(service::ServiceError{
+                    500,"INTERNAL_ERROR","failed to encode forecast preprocessing result"}));
+            }
+        });
 }
 
 void ApiController::classificationData(std::string operation, net::HttpRequest request,
@@ -377,8 +495,9 @@ void ApiController::overview(net::HttpRequest request,
     const auto* dataset_value = request.queryValue("dataset");
     std::string dataset = dataset_value == nullptr ? "train_data"
                                                     : *dataset_value;
-    if (dataset != "train_data" && dataset != "test_data") {
-        reply(badRequest("dataset must be train_data or test_data"));
+    if (dataset != "train_data" && dataset != "val_data" &&
+        dataset != "test_data") {
+        reply(badRequest("dataset must be train_data, val_data or test_data"));
         return;
     }
 

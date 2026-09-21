@@ -62,6 +62,13 @@ int main() {
         const auto health=nlohmann::json::parse(invoke("GET","/api/v1/health").body).at("data");
         CHECK(health.at("forecast_inference").at("available")==false);
         std::cout << "[PASS] health exposes forecast availability\n";
+        CHECK(invoke("POST","/api/v1/data/forecast/sequence",
+                     R"({"company_id":1,"dataset":"val_data"})").status==400);
+        const auto preprocessing=invoke("POST","/api/v1/data/forecast/sequence",
+            R"({"company_id":7,"dataset":"val_data","feature":"cod","window":24})");
+        CHECK(preprocessing.status==503 &&
+              nlohmann::json::parse(preprocessing.body).at("error")=="ANALYSIS_UNAVAILABLE");
+        std::cout << "[PASS] forecast preprocessing routes and val_data validation\n";
         return 0;
     } catch (const std::exception& error) {
         std::cerr << "[FAIL] " << error.what() << '\n';

@@ -65,7 +65,8 @@ void WaterService::getOverview(
         throw std::invalid_argument("service completion must not be empty");
     }
     if (company_id <= 0 ||
-        (dataset != "train_data" && dataset != "test_data")) {
+        (dataset != "train_data" && dataset != "val_data" &&
+         dataset != "test_data")) {
         completion(ServiceError{400, "INVALID_ARGUMENT",
                                 "invalid company_id or dataset"});
         return;

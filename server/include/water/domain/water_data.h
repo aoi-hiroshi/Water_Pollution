@@ -30,6 +30,8 @@ struct WaterSample {
     std::optional<double> dissolved_oxygen;
     std::optional<double> turbidity;
     std::int64_t company_id{0};
+    std::int64_t sample_index{0};
+    std::optional<std::string> sampled_at;
 };
 
 struct FeatureSummary {

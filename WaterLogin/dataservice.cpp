@@ -41,6 +41,15 @@ void DataService::fetchClassification(const QString &operation, const QJsonObjec
     apiClient->post(activeDataRequest, QStringLiteral("/api/v1/data/classification/") + operation, parameters);
 }
 
+void DataService::fetchForecastAnalysis(const QString &operation,
+                                        const QJsonObject &parameters)
+{
+    activeDataRequest = QStringLiteral("forecastData:") + QString::number(++requestSequence);
+    apiClient->post(activeDataRequest,
+                    QStringLiteral("/api/v1/data/forecast/") + operation,
+                    parameters);
+}
+
 void DataService::onRequestSucceeded(const QString &requestKey, const QJsonObject &payload)
 {
     if (requestKey != QLatin1String(kCompanyListRequest) && requestKey != activeDataRequest) return;
@@ -63,6 +72,8 @@ void DataService::onRequestSucceeded(const QString &requestKey, const QJsonObjec
         emit overviewReady(dataValue.toObject());
     } else if (requestKey.startsWith(QStringLiteral("classification:"))) {
         emit classificationReady(dataValue.toObject());
+    } else if (requestKey.startsWith(QStringLiteral("forecastData:"))) {
+        emit forecastAnalysisReady(dataValue.toObject());
     }
 }
 

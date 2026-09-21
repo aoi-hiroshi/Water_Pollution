@@ -91,7 +91,8 @@ void ForecastService::forecast(std::int64_t company_id, std::string dataset,
                                std::function<void(ForecastResult)> completion) {
     if (!completion) { throw std::invalid_argument("forecast completion must not be empty"); }
     if (company_id <= 0 || end_sample_id < 0 || horizon == 0 || horizon > inference::kForecastHorizon ||
-        (dataset != "train_data" && dataset != "test_data")) {
+        (dataset != "train_data" && dataset != "val_data" &&
+         dataset != "test_data")) {
         completion(ServiceError{400, "INVALID_ARGUMENT", "invalid company_id, dataset, end_sample_id or horizon"});
         return;
     }

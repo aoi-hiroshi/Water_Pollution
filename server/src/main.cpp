@@ -12,6 +12,7 @@
 #include "water/service/water_service.h"
 #include "water/service/trace_service.h"
 #include "water/service/classification_data_service.h"
+#include "water/service/forecast_data_service.h"
 
 #include <muduo/base/Logging.h>
 #include <muduo/net/EventLoop.h>
@@ -76,6 +77,8 @@ int main() {
         analysis_workers.start();
         water::service::ClassificationDataService classification_service(
             database, analysis_workers, repository);
+        water::service::ForecastDataService forecast_data_service(
+            database, analysis_workers, repository);
         water::service::TraceService trace_service(
             database, inference_workers, *classifier, repository);
         std::unique_ptr<water::inference::Forecaster> forecaster;
@@ -95,7 +98,9 @@ int main() {
 #endif
         water::service::ForecastService forecast_service(
             database, inference_workers, *forecaster, repository);
-        water::controller::ApiController controller(service, trace_service, forecast_service, &classification_service);
+        water::controller::ApiController controller(
+            service, trace_service, forecast_service,
+            &classification_service, &forecast_data_service);
         auto router = std::make_shared<water::net::HttpRouter>();
         controller.registerRoutes(*router);
 
@@ -128,6 +133,7 @@ int main() {
 
         controller.stopAccepting();
         classification_service.shutdown();
+        forecast_data_service.shutdown();
         database.shutdown(water::concurrency::ShutdownMode::Drain);
         analysis_workers.shutdown(water::concurrency::ShutdownMode::Drain);
         inference_workers.shutdown(

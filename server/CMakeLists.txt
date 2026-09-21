@@ -79,8 +79,10 @@ endif()
 
 add_library(water_application_core
     src/analysis/classification_analysis.cpp
+    src/analysis/forecast_data_analysis.cpp
     src/repository/water_repository.cpp
     src/service/classification_data_service.cpp
+    src/service/forecast_data_service.cpp
     src/service/water_service.cpp
     src/service/trace_service.cpp
     src/service/forecast_service.cpp
@@ -246,6 +248,9 @@ if(WATER_BUILD_TESTS)
     add_executable(classification_analysis_tests tests/classification_analysis_test.cpp)
     target_link_libraries(classification_analysis_tests PRIVATE water_application_core)
     add_test(NAME classification_analysis_tests COMMAND classification_analysis_tests)
+    add_executable(forecast_data_analysis_tests tests/forecast_data_analysis_test.cpp)
+    target_link_libraries(forecast_data_analysis_tests PRIVATE water_application_core)
+    add_test(NAME forecast_data_analysis_tests COMMAND forecast_data_analysis_tests)
 
     if(TARGET water_api_controller)
         add_executable(classification_pipeline_tests tests/classification_pipeline_test.cpp)

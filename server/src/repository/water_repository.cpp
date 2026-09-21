@@ -104,6 +104,8 @@ domain::Company toCompany(const db::DbRow& row) {
 }
 
 domain::WaterSample toSample(const db::DbRow& row) {
+    const auto sample_index = row.find("sample_index");
+    const auto sampled_at = row.find("sampled_at");
     return domain::WaterSample{
         .id = requiredInt64(row, "id"),
         .temperature = optionalDouble(row, "temperature"),
@@ -117,6 +119,10 @@ domain::WaterSample toSample(const db::DbRow& row) {
         .dissolved_oxygen = optionalDouble(row, "dissolved_oxygen"),
         .turbidity = optionalDouble(row, "turbidity"),
         .company_id = requiredInt64(row, "company_id"),
+        .sample_index = sample_index == row.end() || !sample_index->second
+            ? requiredInt64(row, "id")
+            : std::stoll(*sample_index->second),
+        .sampled_at = sampled_at == row.end() ? std::nullopt : sampled_at->second,
     };
 }
 
@@ -127,6 +133,9 @@ std::string datasetTable(const std::string& dataset) {
     if (dataset == "test_data") {
         return "test_data";
     }
+    if (dataset == "val_data") {
+        return "val_data";
+    }
     throw std::invalid_argument("unsupported dataset");
 }
 
@@ -136,6 +145,9 @@ std::string datasetSplit(const std::string& dataset) {
     }
     if (dataset == "test_data") {
         return "test";
+    }
+    if (dataset == "val_data") {
+        return "validation";
     }
     throw std::invalid_argument("unsupported dataset");
 }
@@ -236,7 +248,7 @@ domain::DataOverview WaterRepository::loadOverview(
     const auto safe_limit = std::max<std::size_t>(
         1, std::min<std::size_t>(preview_limit, 50));
     const std::string preview_sql =
-        "SELECT id, temperature, ph, cod, nh3n, tp, water_level, orp, "
+        "SELECT id, sample_index, sampled_at, temperature, ph, cod, nh3n, tp, water_level, orp, "
         "conductivity, dissolved_oxygen, turbidity, company_id FROM " +
         table + " WHERE company_id = ? ORDER BY id ASC LIMIT " +
         std::to_string(safe_limit);
@@ -287,6 +299,27 @@ std::vector<domain::WaterSample> WaterRepository::loadForecastWindow(
     samples.reserve(rows.size());
     for (const auto& row : rows) { samples.push_back(toSample(row)); }
     std::reverse(samples.begin(), samples.end());
+    return samples;
+}
+
+std::vector<domain::WaterSample> WaterRepository::loadForecastSamples(
+    db::DbConnection& connection, std::int64_t company_id,
+    const std::string& dataset, std::size_t row_limit) const {
+    if (company_id <= 0 || row_limit == 0 || row_limit > 100001) {
+        throw std::invalid_argument("invalid forecast dataset arguments");
+    }
+    const auto table = datasetTable(dataset);
+    const std::string sql =
+        "SELECT id, sample_index, sampled_at, temperature, ph, cod, nh3n, tp, "
+        "water_level, orp, conductivity, dissolved_oxygen, turbidity, company_id FROM " +
+        table + " WHERE company_id = ? ORDER BY sample_index ASC LIMIT " +
+        std::to_string(row_limit);
+    const auto rows = connection.query(sql, db::DbParameters{company_id});
+    std::vector<domain::WaterSample> samples;
+    samples.reserve(rows.size());
+    for (const auto& row : rows) {
+        samples.push_back(toSample(row));
+    }
     return samples;
 }
 
