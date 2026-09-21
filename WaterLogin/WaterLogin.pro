@@ -16,11 +16,13 @@ DEFINES += QT_DEPRECATED_WARNINGS
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
+    applogger.cpp \
     apiclient.cpp \
     classificationcharts.cpp \
     datapage.cpp \
     dataservice.cpp \
     homepage.cpp \
+    gitlogservice.cpp \
     logpage.cpp \
     main.cpp \
     loginwindow.cpp \
@@ -32,11 +34,13 @@ SOURCES += \
     traceservice.cpp
 
 HEADERS += \
+    applogger.h \
     apiclient.h \
     classificationcharts.h \
     datapage.h \
     dataservice.h \
     homepage.h \
+    gitlogservice.h \
     loginwindow.h \
     logpage.h \
     mainwindow.h \

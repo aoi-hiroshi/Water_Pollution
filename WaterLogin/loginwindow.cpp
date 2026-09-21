@@ -1,4 +1,5 @@
 #include "loginwindow.h"
+#include "applogger.h"
 #include "mainwindow.h"
 
 #include <QApplication>
@@ -112,6 +113,10 @@ void LoginWindow::setQssStyle()
         file.close();
     } else {
         qDebug() << "Failed to load loginstyle.qss";
+        AppLogger::instance().log(
+            AppLogType::System, AppLogLevel::Warning,
+            QStringLiteral("登录界面"), QStringLiteral("登录样式表加载失败"),
+            QStringLiteral("失败"));
     }
 }
 
@@ -121,15 +126,27 @@ void LoginWindow::onLoginClicked()
     const QString password = pwdEdit->text().trimmed();
 
     if (username.isEmpty() || password.isEmpty()) {
+        AppLogger::instance().log(
+            AppLogType::Alert, AppLogLevel::Warning,
+            QStringLiteral("认证"), QStringLiteral("账号或密码为空"),
+            QStringLiteral("拒绝"));
         QMessageBox::warning(this, "提示", "账号或密码不能为空。");
         return;
     }
 
     if (username == "admin" && password == "123456") {
+        AppLogger::instance().log(
+            AppLogType::System, AppLogLevel::Info,
+            QStringLiteral("认证"), QStringLiteral("管理员登录成功"));
         MainWindow *mainWindow = new MainWindow;
         mainWindow->show();
         close();
     } else {
+        AppLogger::instance().log(
+            AppLogType::Alert, AppLogLevel::Warning,
+            QStringLiteral("认证"),
+            QStringLiteral("登录失败，账号：%1").arg(username),
+            QStringLiteral("拒绝"));
         QMessageBox::critical(this, "登录失败", "账号或密码错误。");
     }
 }

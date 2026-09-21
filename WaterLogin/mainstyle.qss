@@ -172,6 +172,35 @@ QPushButton#secondaryButton:hover {
     background: #e3ecff;
 }
 
+QLabel#logStatusLabel {
+    background: #eef5ff;
+    color: #2569b5;
+    border: 1px solid #c9dcf5;
+    border-radius: 12px;
+    padding: 5px 10px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+QTableWidget {
+    background: white;
+    alternate-background-color: #f7f9fc;
+    border: 1px solid #dbe2ee;
+    border-radius: 8px;
+    gridline-color: #edf1f6;
+    selection-background-color: #deebff;
+    selection-color: #24354d;
+}
+
+QHeaderView::section {
+    background: #f1f5fa;
+    color: #43536c;
+    border: none;
+    border-bottom: 1px solid #d7dfeb;
+    padding: 8px;
+    font-weight: 600;
+}
+
 /* Home-page hall display */
 QFrame#homeDisplay {
     background: #07131f;

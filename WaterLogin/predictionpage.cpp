@@ -1,4 +1,5 @@
 #include "predictionpage.h"
+#include "applogger.h"
 #include "predictionservice.h"
 #include "dataservice.h"
 
@@ -161,6 +162,10 @@ PredictionPage::PredictionPage(QWidget *parent) : QWidget(parent)
     connect(predictionService,&PredictionService::serviceError,this,[this](const QString &key,const QString &message) {
         if (key=="forecast") { loading=false; resultLabel->setText("预测失败："+message); }
         else { modelPending=false; modelAvailable=false; modelLabel->setText("模型信息读取失败："+message); }
+        AppLogger::instance().log(
+            key=="forecast" ? AppLogType::Task : AppLogType::Interface,
+            AppLogLevel::Error, QStringLiteral("趋势预测"), message,
+            QStringLiteral("失败"));
         updateControls();
     });
     connect(dataService,&DataService::companyListReady,this,[this](const QJsonArray &companies) {
@@ -202,6 +207,15 @@ void PredictionPage::startForecast()
     if (!valid || end<0) { QMessageBox::warning(this,"输入错误","截止ID必须为非负整数，0表示最新窗口。"); return; }
     loading=true; lastResult=QJsonObject(); chart->setResult(lastResult); resultTable->setRowCount(0);
     resultLabel->setText("正在读取历史窗口并执行ONNX推理…"); updateControls();
+    AppLogger::instance().log(
+        AppLogType::Task, AppLogLevel::Info,
+        QStringLiteral("趋势预测"),
+        QStringLiteral("提交公司 %1，数据集 %2，截止ID %3，预测 %4 步")
+            .arg(companyBox->currentData().toLongLong())
+            .arg(datasetBox->currentData().toString())
+            .arg(end)
+            .arg(horizonSpin->value()),
+        QStringLiteral("执行中"));
     predictionService->forecast(companyBox->currentData().toLongLong(),datasetBox->currentData().toString(),end,horizonSpin->value());
 }
 
@@ -212,6 +226,11 @@ void PredictionPage::showResult(const QJsonObject &result)
     const int horizon=result.value("horizon").toInt();
     if (result.value("lookback").toInt()!=120 || horizon<1 || horizon>10 ||
         !validPoints(history,120) || !validPoints(predictions,horizon)) {
+        AppLogger::instance().log(
+            AppLogType::Task, AppLogLevel::Error,
+            QStringLiteral("趋势预测"),
+            QStringLiteral("预测响应数据不完整或存在非法数值"),
+            QStringLiteral("失败"));
         resultLabel->setText("预测响应数据不完整或存在非法数值。"); updateControls(); return;
     }
     lastResult=result; chart->setResult(result);
@@ -226,6 +245,12 @@ void PredictionPage::showResult(const QJsonObject &result)
         for (int feature=0; feature<4; ++feature) resultTable->setItem(row,feature+1,
             new QTableWidgetItem(QString::number(predictions[row].toObject().value(kFields[feature]).toDouble(),'g',8)));
     }
+    AppLogger::instance().log(
+        AppLogType::Task, AppLogLevel::Info,
+        QStringLiteral("趋势预测"),
+        QStringLiteral("公司 %1 预测完成，历史120条，输出 %2 步")
+            .arg(result.value("company_name").toString())
+            .arg(horizon));
     updateControls();
 }
 

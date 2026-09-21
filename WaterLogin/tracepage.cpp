@@ -1,5 +1,6 @@
 #include "tracepage.h"
 
+#include "applogger.h"
 #include "traceservice.h"
 
 #include <QAbstractItemView>
@@ -223,6 +224,15 @@ void TracePage::startTrace()
     statusLabel->setText(QStringLiteral("请求已提交，请稍候。"));
     setBusy(true);
 
+    AppLogger::instance().log(
+        AppLogType::Task, AppLogLevel::Info,
+        QStringLiteral("污染溯源"),
+        QStringLiteral("提交样本 %1，数据集 %2，清洗版本 %3")
+            .arg(sampleId)
+            .arg(datasetComboBox->currentData().toString())
+            .arg(cleaningRunInput->value()),
+        QStringLiteral("执行中"));
+
     traceService->classifySample(
         sampleId, datasetComboBox->currentData().toString(), cleaningRunInput->value());
 }
@@ -275,6 +285,13 @@ void TracePage::handleTraceReady(const QJsonObject &result)
     }
 
     exportButton->setEnabled(true);
+    AppLogger::instance().log(
+        AppLogType::Task, AppLogLevel::Info,
+        QStringLiteral("污染溯源"),
+        QStringLiteral("样本 %1 溯源完成，预测公司 %2，置信度 %3%")
+            .arg(result.value(QStringLiteral("sample_id")).toVariant().toLongLong())
+            .arg(predicted.value(QStringLiteral("company_name")).toString())
+            .arg(probability * 100.0, 0, 'f', 2));
 }
 
 void TracePage::handleServiceError(const QString &message)
@@ -285,6 +302,9 @@ void TracePage::handleServiceError(const QString &message)
     resultBody->setText(QStringLiteral("溯源失败\n%1").arg(message));
     statusLabel->setText(
         QStringLiteral("请检查样本 ID、Muduo 服务、数据库和 ONNX 模型配置。"));
+    AppLogger::instance().log(
+        AppLogType::Task, AppLogLevel::Error,
+        QStringLiteral("污染溯源"), message, QStringLiteral("失败"));
     QMessageBox::warning(this, QStringLiteral("污染溯源"), message);
 }
 

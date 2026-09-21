@@ -2,6 +2,7 @@
 #include "ui_mainwindow.h"
 
 #include "datapage.h"
+#include "applogger.h"
 #include "homepage.h"
 #include "logpage.h"
 #include "predictionpage.h"
@@ -32,7 +33,7 @@ const PageMeta kPageMeta[] = {
     {"数据中心", "数据导入、预处理、预览与提交", "数据模块待接入后端接口"},
     {"污染溯源", "读取数据库样本并查看候选污染源概率", "溯源接口已完成 | 需加载 ONNX 模型"},
     {"趋势预测", "读取120条历史并预测四项水质指标", "预测接口已完成 | 需加载 ONNX 模型"},
-    {"日志中心", "查询任务日志、接口日志与告警记录", "日志模块待接入数据库与查询接口"},
+    {"日志中心", "查询客户端运行日志与 GitHub 开发记录", "本地日志已接入 | GitHub提交可刷新"},
     {"系统设置", "管理接口地址、数据库与模型路径", "设置模块待补充配置读写能力"}
 };
 }
@@ -54,6 +55,10 @@ MainWindow::MainWindow(QWidget *parent)
         file.close();
     } else {
         qDebug() << "Failed to load mainstyle.qss";
+        AppLogger::instance().log(
+            AppLogType::System, AppLogLevel::Warning,
+            QStringLiteral("主窗口"), QStringLiteral("主界面样式表加载失败"),
+            QStringLiteral("失败"));
     }
 }
 

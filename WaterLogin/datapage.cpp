@@ -2,6 +2,7 @@
 
 #include "dataservice.h"
 #include "classificationcharts.h"
+#include "applogger.h"
 
 #include <QAbstractItemView>
 #include <QColor>
@@ -927,6 +928,12 @@ void DataPage::handleOverviewReady(const QJsonObject &overview)
     renderOverviewSummary(overview);
     renderOverviewChart(previewRows);
     saveChartButton->setEnabled(!currentChartPixmap.isNull());
+    AppLogger::instance().log(
+        AppLogType::Task, AppLogLevel::Info,
+        QStringLiteral("数据中心"),
+        QStringLiteral("数据概览加载完成，共 %1 条，预览 %2 条")
+            .arg(overview.value(QStringLiteral("total_rows")).toVariant().toLongLong())
+            .arg(previewRows.size()));
 }
 
 void DataPage::handleServiceError(const QString &message)
@@ -938,6 +945,9 @@ void DataPage::handleServiceError(const QString &message)
     chartPlaceholderLabel->setText(QStringLiteral("加载失败"));
     populatePreviewTable(QJsonArray());
     resultSummaryLabel->setText(message);
+    AppLogger::instance().log(
+        AppLogType::Task, AppLogLevel::Error,
+        QStringLiteral("数据中心"), message, QStringLiteral("失败"));
     QMessageBox::warning(this, QStringLiteral("数据模块"), message);
 }
 
@@ -976,6 +986,15 @@ void DataPage::runClassification(QString operation, bool persist)
     }
     setBusy(true);
     resultSummaryLabel->setText(persist ? QStringLiteral("正在清洗并保存独立版本...") : QStringLiteral("正在执行 C++ 分类数据处理..."));
+    AppLogger::instance().log(
+        AppLogType::Task, AppLogLevel::Info,
+        QStringLiteral("数据处理"),
+        QStringLiteral("执行 %1，公司 %2，数据集 %3，保存版本：%4")
+            .arg(operation)
+            .arg(request.value(QStringLiteral("company_id")).toInt())
+            .arg(request.value(QStringLiteral("dataset")).toString())
+            .arg(persist ? QStringLiteral("是") : QStringLiteral("否")),
+        QStringLiteral("执行中"));
     dataService->fetchClassification(operation,request);
 }
 
@@ -1020,4 +1039,11 @@ void DataPage::handleClassificationReady(const QJsonObject &result)
     }
     for (const auto &warning : result.value("warnings").toArray()) lines << QStringLiteral("提示：")+warning.toString();
     resultSummaryLabel->setText(lines.join('\n'));
+    AppLogger::instance().log(
+        AppLogType::Task, AppLogLevel::Info,
+        QStringLiteral("数据处理"),
+        QStringLiteral("规则 %1 处理完成，共 %2 条，保存版本：%3")
+            .arg(result.value(QStringLiteral("rule")).toString())
+            .arg(result.value(QStringLiteral("sample_count")).toInt())
+            .arg(persisted ? QStringLiteral("是") : QStringLiteral("否")));
 }
