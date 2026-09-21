@@ -439,7 +439,7 @@ void DataPage::renderOverviewChart(const QJsonArray &previewRows,
     if (previewRows.isEmpty()) {
         currentChartPixmap = QPixmap();
         chartPlaceholderLabel->setPixmap(QPixmap());
-        chartPlaceholderLabel->setText(QStringLiteral("没有可绘制的样本数据"));
+        chartPlaceholderLabel->setText(QString::fromUtf8("没有可绘制的样本数据"));
         return;
     }
 
@@ -463,25 +463,25 @@ void DataPage::renderOverviewChart(const QJsonArray &previewRows,
     painter.setRenderHint(QPainter::Antialiasing, true);
     painter.setRenderHint(QPainter::TextAntialiasing, true);
 
-    QFont titleFont(QStringLiteral("Microsoft YaHei"), 17, QFont::DemiBold);
-    QFont featureFont(QStringLiteral("Microsoft YaHei"), 11, QFont::DemiBold);
-    QFont axisFont(QStringLiteral("Microsoft YaHei"), 8);
+    QFont titleFont(QLatin1String("Microsoft YaHei"), 17, QFont::DemiBold);
+    QFont featureFont(QLatin1String("Microsoft YaHei"), 11, QFont::DemiBold);
+    QFont axisFont(QLatin1String("Microsoft YaHei"), 8);
     painter.setFont(titleFont);
-    painter.setPen(QColor(QStringLiteral("#172033")));
+    painter.setPen(QColor(QLatin1String("#172033")));
     painter.drawText(QRect(32, 10, canvas.width() - 64, 34),
                      Qt::AlignCenter,
                      title);
 
     painter.setFont(axisFont);
-    painter.setPen(QColor(QStringLiteral("#64748B")));
+    painter.setPen(QColor(QLatin1String("#64748B")));
     painter.drawText(QRect(34, 40, canvas.width() - 68, 22),
                      Qt::AlignLeft | Qt::AlignVCenter,
-                     QStringLiteral("当前结果 %1 个绘图点 · 横轴为数据库样本 ID")
+                     QString::fromUtf8("当前结果 %1 个绘图点 · 横轴为数据库样本 ID")
                          .arg(previewRows.size()));
     const QRectF legendLine(canvas.width() - 170, 50, 30, 0);
-    painter.setPen(QPen(QColor(QStringLiteral("#2F80ED")), 3));
+    painter.setPen(QPen(QColor(QLatin1String("#2F80ED")), 3));
     painter.drawLine(legendLine.topLeft(), legendLine.topRight());
-    painter.setPen(QColor(QStringLiteral("#475569")));
+    painter.setPen(QColor(QLatin1String("#475569")));
     painter.drawText(QRect(canvas.width() - 132, 38, 100, 24),
                      Qt::AlignLeft | Qt::AlignVCenter,
                      seriesLabel);
@@ -500,9 +500,9 @@ void DataPage::renderOverviewChart(const QJsonArray &previewRows,
     const QJsonObject firstRow = previewRows.first().toObject();
     const QJsonObject lastRow = previewRows.last().toObject();
     const QString firstId = QString::number(
-        firstRow.value(QStringLiteral("id")).toVariant().toLongLong());
+        firstRow.value(QLatin1String("id")).toVariant().toLongLong());
     const QString lastId = QString::number(
-        lastRow.value(QStringLiteral("id")).toVariant().toLongLong());
+        lastRow.value(QLatin1String("id")).toVariant().toLongLong());
 
     for (int featureIndex = 0; featureIndex < 10; ++featureIndex) {
         QVector<double> values;
@@ -522,24 +522,24 @@ void DataPage::renderOverviewChart(const QJsonArray &previewRows,
             cellWidth, cellHeight);
         const QRectF plot = QRectF(cell).adjusted(58, 48, -16, -42);
 
-        painter.setPen(QPen(QColor(QStringLiteral("#D7E0EA")), 1));
-        painter.setBrush(QColor(QStringLiteral("#FFFFFF")));
+        painter.setPen(QPen(QColor(QLatin1String("#D7E0EA")), 1));
+        painter.setBrush(QColor(QLatin1String("#FFFFFF")));
         painter.drawRoundedRect(QRectF(cell).adjusted(0.5, 0.5, -0.5, -0.5),
                                 8, 8);
 
         painter.setFont(featureFont);
-        painter.setPen(QColor(QStringLiteral("#1E293B")));
+        painter.setPen(QColor(QLatin1String("#1E293B")));
         painter.drawText(QRect(cell.left() + 12, cell.top() + 9,
                                cell.width() - 24, 27),
                          Qt::AlignCenter,
-                         QStringLiteral("%1 (%2)")
+                         QLatin1String("%1 (%2)")
                              .arg(QString::fromUtf8(features[featureIndex].label),
                                   QString::fromUtf8(features[featureIndex].unit)));
 
         if (values.isEmpty()) {
             painter.setFont(axisFont);
-            painter.setPen(QColor(QStringLiteral("#94A3B8")));
-            painter.drawText(plot, Qt::AlignCenter, QStringLiteral("暂无数据"));
+            painter.setPen(QColor(QLatin1String("#94A3B8")));
+            painter.drawText(plot, Qt::AlignCenter, QString::fromUtf8("暂无数据"));
             continue;
         }
 
@@ -560,19 +560,19 @@ void DataPage::renderOverviewChart(const QJsonArray &previewRows,
         for (int tick = 0; tick <= 4; ++tick) {
             const double ratio = tick / 4.0;
             const double y = plot.bottom() - ratio * plot.height();
-            painter.setPen(QPen(QColor(QStringLiteral("#E7ECF2")), 1));
+            painter.setPen(QPen(QColor(QLatin1String("#E7ECF2")), 1));
             painter.drawLine(QPointF(plot.left(), y), QPointF(plot.right(), y));
-            painter.setPen(QColor(QStringLiteral("#64748B")));
+            painter.setPen(QColor(QLatin1String("#64748B")));
             painter.drawText(QRectF(cell.left() + 3, y - 9, 49, 18),
                              Qt::AlignRight | Qt::AlignVCenter,
                              formatChartAxisText(minimum + ratio * span, span));
         }
         for (int tick = 0; tick <= 4; ++tick) {
             const double x = plot.left() + tick * plot.width() / 4.0;
-            painter.setPen(QPen(QColor(QStringLiteral("#EEF2F6")), 1));
+            painter.setPen(QPen(QColor(QLatin1String("#EEF2F6")), 1));
             painter.drawLine(QPointF(x, plot.top()), QPointF(x, plot.bottom()));
         }
-        painter.setPen(QPen(QColor(QStringLiteral("#AAB7C5")), 1));
+        painter.setPen(QPen(QColor(QLatin1String("#AAB7C5")), 1));
         painter.drawLine(plot.bottomLeft(), plot.bottomRight());
         painter.drawLine(plot.topLeft(), plot.bottomLeft());
 
@@ -600,13 +600,13 @@ void DataPage::renderOverviewChart(const QJsonArray &previewRows,
 
         painter.save();
         painter.setClipRect(plot.adjusted(-2, -2, 2, 2));
-        painter.setPen(QPen(QColor(QStringLiteral("#2F80ED")), 2.4,
+        painter.setPen(QPen(QColor(QLatin1String("#2F80ED")), 2.4,
                             Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
         painter.drawPath(path);
         painter.restore();
 
         painter.setFont(axisFont);
-        painter.setPen(QColor(QStringLiteral("#64748B")));
+        painter.setPen(QColor(QLatin1String("#64748B")));
         painter.drawText(QRectF(plot.left() - 8, plot.bottom() + 5,
                                 plot.width() + 16, 18),
                          Qt::AlignLeft | Qt::AlignVCenter, firstId);
@@ -615,7 +615,7 @@ void DataPage::renderOverviewChart(const QJsonArray &previewRows,
                          Qt::AlignRight | Qt::AlignVCenter, lastId);
         painter.drawText(QRectF(plot.left(), plot.bottom() + 21,
                                 plot.width(), 17),
-                         Qt::AlignCenter, QStringLiteral("样本 ID"));
+                         Qt::AlignCenter, QString::fromUtf8("样本 ID"));
     }
     painter.end();
 
