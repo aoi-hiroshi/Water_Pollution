@@ -49,6 +49,24 @@ QFrame *createInfoCardFrame()
     card->setObjectName("infoCard");
     return card;
 }
+
+QString formatChartAxisText(double value, double span)
+{
+    const double magnitude = std::abs(value);
+    if (magnitude >= 10000.0) {
+        return QString::number(value / 1000.0, 'f', 1) + QLatin1String("k");
+    }
+    if (magnitude >= 1000.0) {
+        return QString::number(value, 'f', 0);
+    }
+    if (span < 1.0) {
+        return QString::number(value, 'f', 2);
+    }
+    if (span < 20.0) {
+        return QString::number(value, 'f', 1);
+    }
+    return QString::number(value, 'f', 0);
+}
 }
 
 DataPage::DataPage(QWidget *parent)
@@ -439,23 +457,6 @@ void DataPage::renderOverviewChart(const QJsonArray &previewRows,
         {"turbidity", "浊度", "-"}
     };
 
-    const auto axisText = [](double value, double span) {
-        const double magnitude = std::abs(value);
-        if (magnitude >= 10000.0) {
-            return QString::number(value / 1000.0, 'f', 1) + QStringLiteral("k");
-        }
-        if (magnitude >= 1000.0) {
-            return QString::number(value, 'f', 0);
-        }
-        if (span < 1.0) {
-            return QString::number(value, 'f', 2);
-        }
-        if (span < 20.0) {
-            return QString::number(value, 'f', 1);
-        }
-        return QString::number(value, 'f', 0);
-    };
-
     QPixmap canvas(1800, 720);
     canvas.fill(Qt::white);
     QPainter painter(&canvas);
@@ -564,7 +565,7 @@ void DataPage::renderOverviewChart(const QJsonArray &previewRows,
             painter.setPen(QColor(QStringLiteral("#64748B")));
             painter.drawText(QRectF(cell.left() + 3, y - 9, 49, 18),
                              Qt::AlignRight | Qt::AlignVCenter,
-                             axisText(minimum + ratio * span, span));
+                             formatChartAxisText(minimum + ratio * span, span));
         }
         for (int tick = 0; tick <= 4; ++tick) {
             const double x = plot.left() + tick * plot.width() / 4.0;
