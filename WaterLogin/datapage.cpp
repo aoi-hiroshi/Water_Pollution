@@ -532,7 +532,7 @@ void DataPage::renderOverviewChart(const QJsonArray &previewRows,
         painter.drawText(QRect(cell.left() + 12, cell.top() + 9,
                                cell.width() - 24, 27),
                          Qt::AlignCenter,
-                         QLatin1String("%1 (%2)")
+                         QString::fromLatin1("%1 (%2)")
                              .arg(QString::fromUtf8(features[featureIndex].label),
                                   QString::fromUtf8(features[featureIndex].unit)));
 
